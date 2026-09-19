@@ -2,6 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { processSpeakerIdentificationJob } from "@/lib/clinical-ai";
 import type { Database, Json } from "@/lib/database.types";
 
 const TRANSCRIPTION_MODEL = "gpt-4o-transcribe-diarize";
@@ -130,11 +131,18 @@ export async function processTranscriptionJob(
       if (downloadError || !audio) throw new Error("AUDIO_DOWNLOAD_FAILED");
 
       const segments = await transcribeAudio(audio, claim);
-      const { error: completeError } = await supabase.rpc("complete_transcription_job", {
+      const { data: transcript, error: completeError } = await supabase.rpc("complete_transcription_job", {
         p_job_id: jobId,
         p_segments: segments,
       });
-      if (completeError) throw new Error("TRANSCRIPT_COMMIT_FAILED");
+      if (completeError || !transcript) throw new Error("TRANSCRIPT_COMMIT_FAILED");
+      const { data: speakerJob } = await supabase
+        .from("processing_jobs")
+        .select("id")
+        .eq("transcript_id", transcript.id)
+        .eq("kind", "speaker_identification")
+        .maybeSingle();
+      if (speakerJob) await processSpeakerIdentificationJob(speakerJob.id, supabase);
       return;
     } catch (error) {
       const { data: failedJob } = await supabase.rpc("fail_transcription_job", {

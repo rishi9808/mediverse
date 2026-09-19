@@ -11,9 +11,11 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-The clinician workspace supports patient onboarding, contact-detail editing, session history, private audio capture/upload, durable diarized transcription, and explicit Psychologist/Patient speaker confirmation. The database foundation is implemented on Supabase Postgres: clinician ownership, patients/sessions, consent, private audio, transcript evidence, versioned SOAP drafts, immutable approval, and processing/retention metadata.
+The clinician workspace supports patient onboarding, contact-detail editing, session history, private audio capture/upload, durable diarized transcription, LLM-proposed Psychologist/Patient identification with explicit clinician confirmation, and evidence-linked SOAP drafting. The database foundation is implemented on Supabase Postgres: clinician ownership, patients/sessions, consent, private audio, transcript evidence, versioned SOAP drafts, immutable approval, and processing/retention metadata.
 
-Set `OPENAI_API_KEY` in `.env` to process verified audio with `gpt-4o-transcribe-diarize`. The key is server-only and must never use a `NEXT_PUBLIC_` prefix.
+Set `OPENAI_API_KEY` in `.env` to process verified audio with `gpt-4o-transcribe-diarize`, identify speakers with an LLM, and draft SOAP with Structured Outputs. The key is server-only and must never use a `NEXT_PUBLIC_` prefix. `OPENAI_CLINICAL_MODEL` optionally overrides the pinned `gpt-4o-mini-2024-07-18` default used for speaker identification and SOAP drafting.
+
+The full confirmed transcript is sent to the drafting model. Generated statements must cite valid segment IDs; unsupported sections remain empty. Clinician-entered observations are stored with `origin: "clinician"` and no transcript citations. Processing ledgers store only bounded status/error codes—never raw audio, transcript content, prompts, or SOAP content.
 
 ## Database
 

@@ -541,14 +541,14 @@ a { color: inherit; }
 }
 .session-heading h1 { margin: 0; font-size: clamp(2.25rem, 5vw, 4rem); font-weight: 580; letter-spacing: -0.052em; line-height: 1; }
 .session-heading > div > p:last-child { margin: 0.9rem 0 0; color: var(--muted); font-size: 0.82rem; }
-.workflow-card, .audio-entry-card, .transcription-card {
+.workflow-card, .audio-entry-card, .transcription-card, .soap-card {
   margin-top: 2rem;
   padding: clamp(1.5rem, 4vw, 2.25rem);
   border: 1px solid var(--line);
   border-radius: 1rem;
   background: white;
 }
-.workflow-card-heading h2, .audio-entry-card h2, .transcription-card h2, .acknowledgment-dialog h2 { margin: 0; font-size: 1.3rem; letter-spacing: -0.025em; }
+.workflow-card-heading h2, .audio-entry-card h2, .transcription-card h2, .soap-card h2, .acknowledgment-dialog h2 { margin: 0; font-size: 1.3rem; letter-spacing: -0.025em; }
 .workflow-card-heading p:last-child, .audio-entry-card > div > p:last-child, .dialog-intro { margin: 0.6rem 0 0; color: var(--muted); font-size: 0.8rem; line-height: 1.55; }
 .workflow-steps { margin: 2rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(5, 1fr); list-style: none; }
 .workflow-steps li { position: relative; padding: 2.2rem 0.5rem 0 0; color: #8b9995; font-size: 0.7rem; font-weight: 700; }
@@ -578,6 +578,22 @@ a { color: inherit; }
 .transcript-segments li strong { color: var(--green-dark); font-size: 0.76rem; }
 .transcript-segments li p { margin: 0; font-size: 0.84rem; line-height: 1.6; }
 .confirm-speakers-button { margin-top: 1.4rem; }
+.draft-regeneration-status { margin-top: 1.25rem; padding: 0.8rem 0.9rem; border-radius: 0.65rem; background: var(--mint); color: var(--green-dark); font-size: 0.75rem; font-weight: 650; }
+.soap-sections { margin-top: 1.5rem; display: grid; gap: 1rem; }
+.soap-section { padding: 1rem; border: 1px solid var(--line); border-radius: 0.8rem; background: var(--paper); }
+.soap-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.soap-section-heading h3 { margin: 0; font-size: 0.95rem; }
+.soap-section-heading .secondary-button { min-height: 2.3rem; padding: 0 0.75rem; font-size: 0.7rem; }
+.unsupported-section { margin: 0.9rem 0 0; color: var(--muted); font-size: 0.76rem; font-style: italic; }
+.soap-statement { margin-top: 0.9rem; padding: 0.9rem; border: 1px solid var(--line); border-radius: 0.7rem; background: white; }
+.soap-statement-meta { margin-bottom: 0.65rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.soap-statement-meta button { border: 0; background: transparent; color: var(--danger); cursor: pointer; font-size: 0.68rem; font-weight: 700; }
+.origin-chip { padding: 0.25rem 0.5rem; border-radius: 999px; font-size: 0.64rem; font-weight: 750; }
+.origin-chip.transcript { background: var(--mint); color: var(--green-dark); }
+.origin-chip.clinician { background: #f1eee7; color: #655d4e; }
+.soap-statement textarea { width: 100%; resize: vertical; padding: 0.75rem; border: 1px solid var(--line); border-radius: 0.55rem; background: white; color: var(--ink); font: inherit; font-size: 0.82rem; line-height: 1.55; }
+.evidence-links { margin: 0.55rem 0 0; color: var(--muted); font-size: 0.68rem; line-height: 1.45; }
+.soap-actions { margin-top: 1.3rem; display: flex; gap: 0.7rem; flex-wrap: wrap; }
 .audio-entry-controls { margin-top: 1.8rem; }
 .audio-source-tabs { width: fit-content; padding: 0.25rem; display: flex; gap: 0.2rem; border: 1px solid var(--line); border-radius: 0.75rem; background: var(--soft); }
 .audio-source-tabs button { min-height: 2.35rem; padding: 0 0.85rem; border: 0; border-radius: 0.55rem; background: transparent; color: var(--muted); cursor: pointer; font-size: 0.76rem; font-weight: 750; }

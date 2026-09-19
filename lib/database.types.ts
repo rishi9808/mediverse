@@ -311,6 +311,7 @@ export type Database = {
         Row: {
           attempts: number
           available_at: string
+          base_note_version: number | null
           clinician_id: string
           created_at: string
           error_code: string | null
@@ -321,10 +322,12 @@ export type Database = {
           request_key: string
           session_id: string
           status: string
+          transcript_id: string | null
         }
         Insert: {
           attempts?: number
           available_at?: string
+          base_note_version?: number | null
           clinician_id: string
           created_at?: string
           error_code?: string | null
@@ -335,10 +338,12 @@ export type Database = {
           request_key: string
           session_id: string
           status?: string
+          transcript_id?: string | null
         }
         Update: {
           attempts?: number
           available_at?: string
+          base_note_version?: number | null
           clinician_id?: string
           created_at?: string
           error_code?: string | null
@@ -349,8 +354,16 @@ export type Database = {
           request_key?: string
           session_id?: string
           status?: string
+          transcript_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "processing_jobs_transcript_fkey"
+            columns: ["transcript_id", "session_id", "clinician_id"]
+            isOneToOne: false
+            referencedRelation: "transcripts"
+            referencedColumns: ["id", "session_id", "clinician_id"]
+          },
           {
             foreignKeyName: "processing_jobs_session_id_clinician_id_fkey"
             columns: ["session_id", "clinician_id"]
@@ -430,6 +443,7 @@ export type Database = {
           speaker_key: string
           speaker_role: string
           start_ms: number
+          suggested_speaker_role: string | null
           transcript_id: string
         }
         Insert: {
@@ -443,6 +457,7 @@ export type Database = {
           speaker_key: string
           speaker_role?: string
           start_ms: number
+          suggested_speaker_role?: string | null
           transcript_id: string
         }
         Update: {
@@ -456,6 +471,7 @@ export type Database = {
           speaker_key?: string
           speaker_role?: string
           start_ms?: number
+          suggested_speaker_role?: string | null
           transcript_id?: string
         }
         Relationships: [
@@ -479,6 +495,8 @@ export type Database = {
           model: string
           provider: string
           session_id: string
+          speaker_identification_model: string | null
+          speaker_identified_at: string | null
           speakers_confirmed_at: string | null
           speakers_confirmed_by: string | null
           source: string
@@ -495,6 +513,8 @@ export type Database = {
           model: string
           provider: string
           session_id: string
+          speaker_identification_model?: string | null
+          speaker_identified_at?: string | null
           speakers_confirmed_at?: string | null
           speakers_confirmed_by?: string | null
           source: string
@@ -511,6 +531,8 @@ export type Database = {
           model?: string
           provider?: string
           session_id?: string
+          speaker_identification_model?: string | null
+          speaker_identified_at?: string | null
           speakers_confirmed_at?: string | null
           speakers_confirmed_by?: string | null
           source?: string
@@ -573,12 +595,33 @@ export type Database = {
       }
     }
     Functions: {
+      claim_drafting_job: {
+        Args: { p_job_id: string }
+        Returns: Json
+      }
+      claim_speaker_identification_job: {
+        Args: { p_job_id: string }
+        Returns: Json
+      }
       claim_transcription_job: {
         Args: { p_job_id: string }
         Returns: Json
       }
       complete_transcription_job: {
         Args: { p_job_id: string; p_segments: Json }
+        Returns: Database["public"]["Tables"]["transcripts"]["Row"]
+      }
+      complete_drafting_job: {
+        Args: {
+          p_content: Json
+          p_job_id: string
+          p_model: string
+          p_prompt_version: string
+        }
+        Returns: Database["public"]["Tables"]["note_revisions"]["Row"]
+      }
+      complete_speaker_identification_job: {
+        Args: { p_assignments: Json; p_job_id: string; p_model: string }
         Returns: Database["public"]["Tables"]["transcripts"]["Row"]
       }
       confirm_transcript_speakers: {
@@ -654,6 +697,22 @@ export type Database = {
         Args: { p_error_code: string; p_job_id: string }
         Returns: Database["public"]["Tables"]["processing_jobs"]["Row"]
       }
+      enqueue_drafting_job: {
+        Args: {
+          p_expected_version: number
+          p_session_id: string
+          p_transcript_id: string
+        }
+        Returns: Database["public"]["Tables"]["processing_jobs"]["Row"]
+      }
+      fail_drafting_job: {
+        Args: { p_error_code: string; p_job_id: string }
+        Returns: Database["public"]["Tables"]["processing_jobs"]["Row"]
+      }
+      fail_speaker_identification_job: {
+        Args: { p_error_code: string; p_job_id: string }
+        Returns: Database["public"]["Tables"]["processing_jobs"]["Row"]
+      }
       record_consent: {
         Args: {
           p_decision: string
@@ -687,6 +746,14 @@ export type Database = {
         }
       }
       retry_transcription_job: {
+        Args: { p_job_id: string }
+        Returns: Database["public"]["Tables"]["processing_jobs"]["Row"]
+      }
+      retry_drafting_job: {
+        Args: { p_job_id: string }
+        Returns: Database["public"]["Tables"]["processing_jobs"]["Row"]
+      }
+      retry_speaker_identification_job: {
         Args: { p_job_id: string }
         Returns: Database["public"]["Tables"]["processing_jobs"]["Row"]
       }

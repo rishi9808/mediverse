@@ -122,17 +122,46 @@ select '50000000-0000-4000-8000-000000000003',session_id,clinician_id,id,1,'audi
 from public.audio_assets where session_id = '30000000-0000-4000-8000-000000000003';
 select pg_temp.throws($q$insert into public.transcript_segments(transcript_id,session_id,clinician_id,ordinal,speaker_key,start_ms,end_ms,content) values('50000000-0000-4000-8000-000000000003','30000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000001',0,'speaker_0',0,30001,'too long')$q$, '23514', 'Segment timestamps cannot exceed source duration');
 insert into public.transcript_segments(transcript_id,session_id,clinician_id,ordinal,speaker_key,start_ms,end_ms,content)
-values('50000000-0000-4000-8000-000000000003','30000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000001',0,'speaker_0',0,30000,'Fictional test speech.');
+values('50000000-0000-4000-8000-000000000003','30000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000001',0,'speaker_0',0,15000,'Fictional patient speech.');
+insert into public.transcript_segments(transcript_id,session_id,clinician_id,ordinal,speaker_key,start_ms,end_ms,content)
+values('50000000-0000-4000-8000-000000000003','30000000-0000-4000-8000-000000000003','10000000-0000-4000-8000-000000000001',1,'speaker_1',15000,30000,'Fictional psychologist speech.');
 update public.transcripts set status = 'ready' where id = '50000000-0000-4000-8000-000000000003';
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
 select set_config('request.jwt.claims', '{"sub":"10000000-0000-4000-8000-000000000001","role":"authenticated"}', true);
 select pg_temp.throws($q$select public.save_note_revision('30000000-0000-4000-8000-000000000003','50000000-0000-4000-8000-000000000003',0,'{"subjective":[],"objective":[],"assessment":[],"plan":[]}')$q$, '23514', 'Unconfirmed speaker roles block drafting');
-update public.transcript_segments set speaker_role = 'patient' where transcript_id = '50000000-0000-4000-8000-000000000003';
-select public.confirm_transcript_speakers('50000000-0000-4000-8000-000000000003', '{"speaker_0":"patient"}');
-select pg_temp.ok((select speaker_role = 'patient' from public.transcript_segments where transcript_id = '50000000-0000-4000-8000-000000000003') and (select speakers_confirmed_at is not null and speakers_confirmed_by = '10000000-0000-4000-8000-000000000001' from public.transcripts where id = '50000000-0000-4000-8000-000000000003'), 'Clinician can explicitly confirm speaker roles before drafting');
+select public.claim_speaker_identification_job(id) from public.processing_jobs
+  where transcript_id = '50000000-0000-4000-8000-000000000003' and kind = 'speaker_identification';
+select public.complete_speaker_identification_job(id, '{"speaker_0":"patient","speaker_1":"clinician"}', 'test-llm')
+  from public.processing_jobs where transcript_id = '50000000-0000-4000-8000-000000000003'
+    and kind = 'speaker_identification';
+select pg_temp.ok((select count(*) = 2 from public.transcript_segments where transcript_id = '50000000-0000-4000-8000-000000000003' and suggested_speaker_role is not null) and (select speaker_identification_model = 'test-llm' and speaker_identified_at is not null from public.transcripts where id = '50000000-0000-4000-8000-000000000003'), 'LLM suggestions identify every transcript speaker');
+select public.confirm_transcript_speakers('50000000-0000-4000-8000-000000000003', '{"speaker_0":"patient","speaker_1":"clinician"}');
+select pg_temp.ok((select count(*) = 2 from public.transcript_segments where transcript_id = '50000000-0000-4000-8000-000000000003' and speaker_role in ('patient','clinician')) and (select speakers_confirmed_at is not null and speakers_confirmed_by = '10000000-0000-4000-8000-000000000001' from public.transcripts where id = '50000000-0000-4000-8000-000000000003'), 'Clinician can explicitly confirm LLM speaker roles before drafting');
+select pg_temp.ok((select status = 'queued' and base_note_version = 0 from public.processing_jobs where transcript_id = '50000000-0000-4000-8000-000000000003' and kind = 'drafting'), 'Speaker confirmation queues an idempotent SOAP draft');
 select pg_temp.throws($q$select public.save_note_revision('30000000-0000-4000-8000-000000000003','50000000-0000-4000-8000-000000000003',0,'{"subjective":null,"objective":[],"assessment":[],"plan":[]}')$q$, '23514', 'Malformed SOAP sections are rejected');
+select public.claim_drafting_job(id) from public.processing_jobs
+  where transcript_id = '50000000-0000-4000-8000-000000000003' and kind = 'drafting';
+select pg_temp.throws($q$
+  select public.complete_drafting_job(id,
+    '{"subjective":[{"text":"Unsupported citation","origin":"transcript","segment_ids":["ffffffff-ffff-4fff-8fff-ffffffffffff"]}],"objective":[],"assessment":[],"plan":[]}',
+    'test-llm','test-prompt')
+  from public.processing_jobs where transcript_id = '50000000-0000-4000-8000-000000000003' and kind = 'drafting'
+$q$, '23514', 'Malformed drafting output fails before persistence');
+select public.fail_drafting_job(id, 'INVALID_PROVIDER_RESPONSE') from public.processing_jobs
+  where transcript_id = '50000000-0000-4000-8000-000000000003' and kind = 'drafting';
+select public.claim_drafting_job(id) from public.processing_jobs
+  where transcript_id = '50000000-0000-4000-8000-000000000003' and kind = 'drafting';
+select public.complete_drafting_job(job.id, jsonb_build_object(
+    'subjective', jsonb_build_array(jsonb_build_object('text','Fictional patient speech.','origin','transcript','segment_ids',jsonb_build_array(segment.id))),
+    'objective', '[]'::jsonb, 'assessment', '[]'::jsonb, 'plan', '[]'::jsonb
+  ), 'test-llm', 'test-prompt')
+from public.processing_jobs job
+cross join lateral (select id from public.transcript_segments where transcript_id = job.transcript_id and speaker_role = 'patient' limit 1) segment
+where job.transcript_id = '50000000-0000-4000-8000-000000000003' and job.kind = 'drafting';
+select pg_temp.ok((select count(*) = 1 from public.note_revisions where session_id = '30000000-0000-4000-8000-000000000003' and generation_model = 'test-llm' and prompt_version = 'test-prompt') and (select status = 'succeeded' and attempts = 2 from public.processing_jobs where transcript_id = '50000000-0000-4000-8000-000000000003' and kind = 'drafting'), 'Valid evidence-linked SOAP persists after a safe retry');
+select pg_temp.throws($q$select public.enqueue_drafting_job('30000000-0000-4000-8000-000000000003','50000000-0000-4000-8000-000000000003',0)$q$, '40001', 'Regeneration cannot overwrite a newer clinician revision');
 select pg_temp.throws($q$select public.save_note_revision(session_id,transcript_id,1,jsonb_set(content,'{subjective,0,segment_ids}','["ffffffff-ffff-4fff-8fff-ffffffffffff"]')) from public.note_revisions where session_id = '30000000-0000-4000-8000-000000000002'$q$, '23514', 'Unknown citations are rejected');
 select pg_temp.throws($q$select public.save_note_revision(n.session_id,n.transcript_id,1,jsonb_set(n.content,'{subjective,0,segment_ids}',(select jsonb_build_array(id) from public.transcript_segments where session_id = '30000000-0000-4000-8000-000000000001' limit 1))) from public.note_revisions n where n.session_id = '30000000-0000-4000-8000-000000000002'$q$, '23514', 'Citations from another session are rejected');
 select pg_temp.throws($q$select public.save_note_revision(session_id,transcript_id,1,jsonb_set(content,'{subjective,0,segment_ids}','[]')) from public.note_revisions where session_id = '30000000-0000-4000-8000-000000000002'$q$, '23514', 'Transcript-derived statements require evidence');

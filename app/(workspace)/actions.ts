@@ -16,6 +16,8 @@ import {
   AUDIO_UPLOAD_CONSENT_POLICY_VERSION,
   RECORDING_CONSENT_POLICY_VERSION,
 } from "@/lib/recording-consent";
+import { processDraftingJob, processSpeakerIdentificationJob } from "@/lib/clinical-ai";
+import type { SoapDocument } from "@/lib/soap";
 import { processTranscriptionJob } from "@/lib/transcription";
 
 export type PatientFormState = {
@@ -402,6 +404,125 @@ export async function confirmTranscriptSpeakers(
     return { ok: false, message: "We couldn’t confirm the speakers. Review each assignment and try again." };
   }
 
+  const { data: draftingJob } = await supabase
+    .from("processing_jobs")
+    .select("id")
+    .eq("transcript_id", transcriptId)
+    .eq("kind", "drafting")
+    .eq("status", "queued")
+    .maybeSingle();
+  if (draftingJob) after(() => processDraftingJob(draftingJob.id, supabase));
+
+  revalidatePath(`/sessions/${sessionId}`);
+  return { ok: true };
+}
+
+export async function continueSpeakerIdentification(sessionId: string, jobId: string) {
+  const { supabase, clinician } = await requireClinician();
+  const { data: job } = await supabase
+    .from("processing_jobs")
+    .select("id, status, attempts")
+    .eq("id", jobId)
+    .eq("session_id", sessionId)
+    .eq("clinician_id", clinician.id)
+    .eq("kind", "speaker_identification")
+    .maybeSingle();
+  if (job && ["queued", "running"].includes(job.status) && job.attempts < 3) {
+    after(() => processSpeakerIdentificationJob(job.id, supabase));
+  }
+}
+
+export async function retrySpeakerIdentification(
+  sessionId: string,
+  jobId: string,
+): Promise<TranscriptionActionResult> {
+  const { supabase } = await requireClinician();
+  const { data: job, error } = await supabase.rpc("retry_speaker_identification_job", {
+    p_job_id: jobId,
+  });
+  if (error || !job || job.status !== "queued") {
+    return { ok: false, message: "Speaker identification cannot be retried again." };
+  }
+  after(() => processSpeakerIdentificationJob(job.id, supabase));
+  revalidatePath(`/sessions/${sessionId}`);
+  return { ok: true };
+}
+
+export async function continueDrafting(sessionId: string, jobId: string) {
+  const { supabase, clinician } = await requireClinician();
+  const { data: job } = await supabase
+    .from("processing_jobs")
+    .select("id, status, attempts")
+    .eq("id", jobId)
+    .eq("session_id", sessionId)
+    .eq("clinician_id", clinician.id)
+    .eq("kind", "drafting")
+    .maybeSingle();
+  if (job && ["queued", "running"].includes(job.status) && job.attempts < 3) {
+    after(() => processDraftingJob(job.id, supabase));
+  }
+}
+
+export async function retryDrafting(
+  sessionId: string,
+  jobId: string,
+): Promise<TranscriptionActionResult> {
+  const { supabase } = await requireClinician();
+  const { data: job, error } = await supabase.rpc("retry_drafting_job", { p_job_id: jobId });
+  if (error || !job || job.status !== "queued") {
+    return { ok: false, message: "This SOAP draft cannot be retried again." };
+  }
+  after(() => processDraftingJob(job.id, supabase));
+  revalidatePath(`/sessions/${sessionId}`);
+  return { ok: true };
+}
+
+export async function saveSoapDraft(
+  sessionId: string,
+  transcriptId: string,
+  expectedVersion: number,
+  content: SoapDocument,
+): Promise<TranscriptionActionResult> {
+  const { supabase } = await requireClinician();
+  const { error } = await supabase.rpc("save_note_revision", {
+    p_session_id: sessionId,
+    p_transcript_id: transcriptId,
+    p_expected_version: expectedVersion,
+    p_content: content,
+    p_prompt_version: "clinician-edit-v1",
+  });
+  if (error) {
+    return {
+      ok: false,
+      message: error.code === "40001"
+        ? "A newer draft exists. Refresh before saving so no edits are overwritten."
+        : "We couldn’t save this SOAP revision. Review the entries and evidence, then try again.",
+    };
+  }
+  revalidatePath(`/sessions/${sessionId}`);
+  return { ok: true };
+}
+
+export async function regenerateSoapDraft(
+  sessionId: string,
+  transcriptId: string,
+  expectedVersion: number,
+): Promise<TranscriptionActionResult> {
+  const { supabase } = await requireClinician();
+  const { data: job, error } = await supabase.rpc("enqueue_drafting_job", {
+    p_session_id: sessionId,
+    p_transcript_id: transcriptId,
+    p_expected_version: expectedVersion,
+  });
+  if (error || !job) {
+    return {
+      ok: false,
+      message: error?.code === "40001"
+        ? "A newer draft exists. Refresh before regenerating."
+        : "We couldn’t start regeneration. Another draft may already be processing.",
+    };
+  }
+  after(() => processDraftingJob(job.id, supabase));
   revalidatePath(`/sessions/${sessionId}`);
   return { ok: true };
 }

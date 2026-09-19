@@ -7,9 +7,11 @@ import {
   RECORDING_CONSENT_POLICY_VERSION,
 } from "@/lib/recording-consent";
 import { getSessionWorkflowCopy, SESSION_WORKFLOW, type SessionWorkflowState } from "@/lib/session-workflow";
+import type { SoapDocument } from "@/lib/soap";
 
 import { RetryButton } from "../../components";
 import { AudioEntryControls } from "./audio-entry-controls";
+import { SoapReview } from "./soap-review";
 import { TranscriptionReview } from "./transcription-review";
 
 export const maxDuration = 300;
@@ -67,7 +69,10 @@ export default async function SessionPage({ params }: { params: Promise<{ sessio
     { data: acknowledgment, error: acknowledgmentError },
     { data: audioAsset, error: audioAssetError },
     { data: transcriptionJob, error: transcriptionJobError },
+    { data: speakerIdentificationJob, error: speakerIdentificationJobError },
+    { data: draftingJob, error: draftingJobError },
     { data: transcript, error: transcriptError },
+    { data: noteRevision, error: noteRevisionError },
   ] =
     await Promise.all([
       supabase
@@ -101,17 +106,44 @@ export default async function SessionPage({ params }: { params: Promise<{ sessio
         .limit(1)
         .maybeSingle(),
       supabase
+        .from("processing_jobs")
+        .select("id, status, attempts")
+        .eq("session_id", session.id)
+        .eq("clinician_id", clinician.id)
+        .eq("kind", "speaker_identification")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from("processing_jobs")
+        .select("id, status, attempts")
+        .eq("session_id", session.id)
+        .eq("clinician_id", clinician.id)
+        .eq("kind", "drafting")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
         .from("transcripts")
-        .select("id, source, speakers_confirmed_at")
+        .select("id, source, speakers_confirmed_at, speaker_identified_at, speaker_identification_model")
         .eq("session_id", session.id)
         .eq("clinician_id", clinician.id)
         .eq("status", "ready")
         .order("version", { ascending: false })
         .limit(1)
         .maybeSingle(),
+      supabase
+        .from("note_revisions")
+        .select("id, transcript_id, version, content")
+        .eq("session_id", session.id)
+        .eq("clinician_id", clinician.id)
+        .order("version", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ]);
 
-  if (patientError || acknowledgmentError || audioAssetError || transcriptionJobError || transcriptError) {
+  if (patientError || acknowledgmentError || audioAssetError || transcriptionJobError ||
+    speakerIdentificationJobError || draftingJobError || transcriptError || noteRevisionError) {
     return (
       <main className="workspace-page">
         <section className="state-panel error-state" role="alert">
@@ -131,7 +163,7 @@ export default async function SessionPage({ params }: { params: Promise<{ sessio
   const { data: transcriptSegments, error: transcriptSegmentsError } = transcript
     ? await supabase
         .from("transcript_segments")
-        .select("id, speaker_key, speaker_role, start_ms, end_ms, content")
+        .select("id, speaker_key, speaker_role, suggested_speaker_role, start_ms, end_ms, content")
         .eq("transcript_id", transcript.id)
         .eq("clinician_id", clinician.id)
         .order("ordinal")
@@ -219,10 +251,16 @@ export default async function SessionPage({ params }: { params: Promise<{ sessio
             status: transcriptionJob.status,
             attempts: transcriptionJob.attempts,
           } : null}
+          speakerJob={speakerIdentificationJob ? {
+            id: speakerIdentificationJob.id,
+            status: speakerIdentificationJob.status,
+            attempts: speakerIdentificationJob.attempts,
+          } : null}
           segments={(transcriptSegments ?? []).map((segment) => ({
             id: segment.id,
             speakerKey: segment.speaker_key,
             speakerRole: segment.speaker_role,
+            suggestedSpeakerRole: segment.suggested_speaker_role,
             startMs: segment.start_ms,
             endMs: segment.end_ms,
             content: segment.content,
@@ -231,8 +269,32 @@ export default async function SessionPage({ params }: { params: Promise<{ sessio
           transcript={transcript ? {
             id: transcript.id,
             confirmedAt: transcript.speakers_confirmed_at,
+            identifiedAt: transcript.speaker_identified_at,
+            identificationModel: transcript.speaker_identification_model,
             source: transcript.source,
           } : null}
+        />
+      )}
+
+      {transcript?.speakers_confirmed_at && (
+        <SoapReview
+          key={noteRevision?.version ?? "drafting"}
+          draftingJob={draftingJob ? {
+            id: draftingJob.id,
+            status: draftingJob.status,
+            attempts: draftingJob.attempts,
+          } : null}
+          note={noteRevision ? {
+            version: noteRevision.version,
+            content: noteRevision.content as unknown as SoapDocument,
+          } : null}
+          segments={(transcriptSegments ?? []).map((segment) => ({
+            id: segment.id,
+            startMs: segment.start_ms,
+            endMs: segment.end_ms,
+          }))}
+          sessionId={session.id}
+          transcriptId={transcript.id}
         />
       )}
     </main>

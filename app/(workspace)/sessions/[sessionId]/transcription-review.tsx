@@ -3,7 +3,13 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { confirmTranscriptSpeakers, continueTranscription, retryTranscription } from "../../actions";
+import {
+  confirmTranscriptSpeakers,
+  continueSpeakerIdentification,
+  continueTranscription,
+  retrySpeakerIdentification,
+  retryTranscription,
+} from "../../actions";
 
 type Job = {
   id: string;
@@ -15,6 +21,7 @@ type Segment = {
   id: string;
   speakerKey: string;
   speakerRole: string;
+  suggestedSpeakerRole: string | null;
   startMs: number;
   endMs: number;
   content: string;
@@ -23,6 +30,8 @@ type Segment = {
 type Transcript = {
   id: string;
   confirmedAt: string | null;
+  identifiedAt: string | null;
+  identificationModel: string | null;
   source: string;
 };
 
@@ -41,11 +50,13 @@ function roleLabel(role: string) {
 
 export function TranscriptionReview({
   job,
+  speakerJob,
   segments,
   sessionId,
   transcript,
 }: {
   job: Job | null;
+  speakerJob: Job | null;
   segments: Segment[];
   sessionId: string;
   transcript: Transcript | null;
@@ -56,11 +67,15 @@ export function TranscriptionReview({
   const [assignments, setAssignments] = useState<Record<string, "" | "clinician" | "patient">>(() =>
     Object.fromEntries(speakers.map((speaker) => [
       speaker,
-      segments.find((segment) => segment.speakerKey === speaker)?.speakerRole === "clinician"
+      segments.find((segment) => segment.speakerKey === speaker)?.suggestedSpeakerRole === "clinician"
         ? "clinician"
-        : segments.find((segment) => segment.speakerKey === speaker)?.speakerRole === "patient"
+        : segments.find((segment) => segment.speakerKey === speaker)?.suggestedSpeakerRole === "patient"
           ? "patient"
-          : "",
+          : segments.find((segment) => segment.speakerKey === speaker)?.speakerRole === "clinician"
+            ? "clinician"
+            : segments.find((segment) => segment.speakerKey === speaker)?.speakerRole === "patient"
+              ? "patient"
+              : "",
     ])),
   );
   const [message, setMessage] = useState("");
@@ -82,6 +97,19 @@ export function TranscriptionReview({
       window.clearInterval(resumeTimer);
     };
   }, [activeJobId, activeJobStatus, router, sessionId, transcript]);
+
+  useEffect(() => {
+    if (!speakerJob || transcript?.identifiedAt || transcript?.source !== "audio") return;
+    if (!["queued", "running"].includes(speakerJob.status)) return;
+    const refreshTimer = window.setInterval(() => router.refresh(), 2500);
+    const resume = () => void continueSpeakerIdentification(sessionId, speakerJob.id);
+    resume();
+    const resumeTimer = window.setInterval(resume, 30_000);
+    return () => {
+      window.clearInterval(refreshTimer);
+      window.clearInterval(resumeTimer);
+    };
+  }, [router, sessionId, speakerJob, transcript]);
 
   function retry() {
     if (!job) return;
@@ -106,6 +134,16 @@ export function TranscriptionReview({
     startTransition(async () => {
       const result = await confirmTranscriptSpeakers(sessionId, transcript.id, completeAssignments);
       setMessage(result.ok ? "Speaker roles confirmed. SOAP drafting is now unlocked." : result.message);
+      router.refresh();
+    });
+  }
+
+  function retryIdentification() {
+    if (!speakerJob) return;
+    setMessage("");
+    startTransition(async () => {
+      const result = await retrySpeakerIdentification(sessionId, speakerJob.id);
+      if (!result.ok) setMessage(result.message);
       router.refresh();
     });
   }
@@ -147,13 +185,41 @@ export function TranscriptionReview({
     );
   }
 
+  if (transcript.source === "audio" && !transcript.identifiedAt) {
+    const failed = speakerJob?.status === "failed";
+    return (
+      <section className="transcription-card" aria-labelledby="speaker-identification-heading">
+        <div className="transcription-heading-row">
+          <div>
+            <p className="section-kicker">LLM speaker identification</p>
+            <h2 id="speaker-identification-heading">
+              {failed ? "Speaker identification needs attention" : "Identifying Psychologist and Patient"}
+            </h2>
+            <p>The complete dialogue is being analyzed by the language model before your required confirmation.</p>
+          </div>
+          <span className={`status-chip ${failed ? "" : "active-status"}`}>
+            {speakerJob?.status === "running" ? "Processing" : failed ? "Needs attention" : "Queued"}
+          </span>
+        </div>
+        {speakerJob && <p className="processing-meta">Attempt {Math.min(speakerJob.attempts, 3)} of 3</p>}
+        {!failed && <progress className="indeterminate-progress" aria-label="Speaker identification in progress" />}
+        {failed && speakerJob && speakerJob.attempts < 3 && (
+          <button className="primary-button" disabled={pending} type="button" onClick={retryIdentification}>
+            {pending ? "Retrying…" : "Retry speaker identification"}
+          </button>
+        )}
+        {message && <p className="audio-error" role="alert">{message}</p>}
+      </section>
+    );
+  }
+
   return (
     <section className="transcription-card" aria-labelledby="transcript-review-heading">
       <div className="transcription-heading-row">
         <div>
           <p className="section-kicker">Speaker-attributed transcript</p>
           <h2 id="transcript-review-heading">Review and confirm speakers</h2>
-          <p>Check every segment, correct the speaker mapping, then confirm before creating a SOAP draft.</p>
+          <p>Review the LLM’s role suggestions, correct them if needed, then confirm before SOAP drafting.</p>
         </div>
         <span className={`status-chip ${transcript.confirmedAt ? "" : "active-status"}`}>
           {transcript.confirmedAt ? "Speakers confirmed" : "Confirmation required"}
@@ -164,7 +230,7 @@ export function TranscriptionReview({
         <div className="speaker-assignments">
           {speakers.map((speaker, index) => (
             <label key={speaker}>
-              <span>Speaker {index + 1} <small>{speaker}</small></span>
+              <span>Speaker {index + 1} <small>{speaker} · LLM suggestion</small></span>
               <select
                 value={assignments[speaker] ?? ""}
                 onChange={(event) => setAssignments((current) => ({
