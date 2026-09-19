@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { requireClinician } from "@/lib/clinician";
+import { getIndiaTimeGreeting } from "@/lib/greeting";
 import { getSessionWorkflowCopy } from "@/lib/session-workflow";
 
 import { createRecordingSession } from "./actions";
@@ -8,10 +9,6 @@ import { CalendarIcon, PlusIcon } from "./icons";
 
 type TimelineRow = { session_id: string; patient_id: string; occurred_at: string; documentation_status: string };
 type FollowUpRow = { id: string; patient_id: string; action: string; due_on: string; completed_at: string | null };
-
-function firstName(name: string) {
-  return name.trim().split(/\s+/)[0] || name;
-}
 
 function formatShortDate(value: string) {
   return new Intl.DateTimeFormat("en", { day: "numeric", month: "short" }).format(new Date(`${value}T00:00:00`));
@@ -67,12 +64,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     ...followUps.filter((item) => item.due_on > today).map((item) => ({ id: `follow-${item.id}`, href: `/patients/${item.patient_id}`, patientId: item.patient_id, title: item.action, detail: `Due ${formatShortDate(item.due_on)}`, action: "View patient", tone: "upcoming" })),
   ];
   const newPatient = onboarded ? patientById.get(onboarded) : null;
-  const hour = new Date().getHours();
+  const greeting = getIndiaTimeGreeting();
 
   return (
     <main className="workspace-page dashboard-page">
       <header className="dashboard-heading">
-        <div><p className="page-context">Psychologist workspace</p><h1>Good {hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening"}, {firstName(clinician.display_name)}</h1><p>Here is what needs your attention today.</p></div>
+        <div><p className="page-context">Psychologist workspace</p><h1>Good {greeting}, {clinician.display_name}</h1><p>Here is what needs your attention today.</p></div>
         <div className="dashboard-actions">
           <Link className="secondary-button" href="/patients/new"><PlusIcon /> Onboard patient</Link>
           <form action={createRecordingSession} className="start-session-form">

@@ -17,7 +17,7 @@ begin
     values(clinician, 'psychologist@mediverse.example', 'authenticated', 'authenticated', now(), now(), now())
     on conflict(id) do nothing;
   insert into public.clinicians(id, display_name)
-    values(clinician, 'Mira Shah')
+    values(clinician, 'Dr. Issac')
     on conflict(id) do update set display_name = excluded.display_name;
 
   perform set_config('request.jwt.claim.sub', clinician::text, true);
