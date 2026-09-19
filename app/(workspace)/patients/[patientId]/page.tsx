@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { requireClinician } from "@/lib/clinician";
-import { getSessionWorkflowCopy } from "@/lib/session-workflow";
+import { getSessionWorkflowCopy, getTimelineStage, type TimelineStage } from "@/lib/session-workflow";
 
 import { createRecordingSession } from "../../actions";
 import { CreateSessionButton, RetryButton } from "../../components";
@@ -26,6 +26,12 @@ function formatSessionDate(value: string) {
   }).format(new Date(value));
 }
 
+const timelineStageLabels: Record<TimelineStage, string> = {
+  processing: "Processing",
+  draft: "Draft",
+  approved: "Approved",
+};
+
 function SessionList({ emptyCopy, sessions }: { emptyCopy: string; sessions: TimelineRow[] }) {
   if (!sessions.length) return <div className="small-empty-state">{emptyCopy}</div>;
 
@@ -33,13 +39,14 @@ function SessionList({ emptyCopy, sessions }: { emptyCopy: string; sessions: Tim
     <div className="session-list">
       {sessions.map((session) => {
         const copy = getSessionWorkflowCopy(session.documentation_status);
+        const stage = getTimelineStage(session.documentation_status);
         return (
           <Link className="session-row" href={`/sessions/${session.session_id}`} key={session.session_id}>
             <div className="session-icon"><CalendarIcon /></div>
             <div className="session-copy">
               <div className="session-title-line">
                 <h3>{formatSessionDate(session.occurred_at)}</h3>
-                <span className={`status-chip ${session.documentation_status === "approved" ? "" : "active-status"}`}>{copy.label}</span>
+                <span className={`status-chip timeline-${stage}`}>{timelineStageLabels[stage]}</span>
               </div>
               <p>{copy.detail}</p>
               <span>
@@ -95,8 +102,9 @@ export default async function PatientDetailPage({ params }: { params: Promise<{ 
   if (!patient) notFound();
 
   const typedSessions = (sessions ?? []) as TimelineRow[];
-  const activeSessions = typedSessions.filter((session) => session.documentation_status !== "approved");
-  const previousSessions = typedSessions.filter((session) => session.documentation_status === "approved");
+  const processingSessions = typedSessions.filter((session) => getTimelineStage(session.documentation_status) === "processing");
+  const draftSessions = typedSessions.filter((session) => getTimelineStage(session.documentation_status) === "draft");
+  const approvedSessions = typedSessions.filter((session) => getTimelineStage(session.documentation_status) === "approved");
 
   return (
     <main className="workspace-page">
@@ -137,27 +145,38 @@ export default async function PatientDetailPage({ params }: { params: Promise<{ 
         </dl>
       </section>
 
-      <div className="timeline-sections">
-        <section aria-labelledby="active-sessions-heading">
+      <div className="timeline-sections milestone-timeline">
+        <section aria-labelledby="processing-sessions-heading">
           <div className="list-heading">
             <div>
-              <p className="section-kicker">Current work</p>
-              <h2 id="active-sessions-heading">Active sessions</h2>
+              <p className="section-kicker">In progress</p>
+              <h2 id="processing-sessions-heading">Processing</h2>
             </div>
-            <span className="count-badge">{activeSessions.length}</span>
+            <span className="count-badge">{processingSessions.length}</span>
           </div>
-          <SessionList emptyCopy="There are no active sessions for this patient." sessions={activeSessions} />
+          <SessionList emptyCopy="No sessions are processing." sessions={processingSessions} />
         </section>
 
-        <section aria-labelledby="previous-sessions-heading">
+        <section aria-labelledby="draft-sessions-heading">
+          <div className="list-heading">
+            <div>
+              <p className="section-kicker">Needs review</p>
+              <h2 id="draft-sessions-heading">Drafts</h2>
+            </div>
+            <span className="count-badge">{draftSessions.length}</span>
+          </div>
+          <SessionList emptyCopy="No draft notes are awaiting review." sessions={draftSessions} />
+        </section>
+
+        <section aria-labelledby="approved-sessions-heading">
           <div className="list-heading">
             <div>
               <p className="section-kicker">Clinical history</p>
-              <h2 id="previous-sessions-heading">Previous sessions</h2>
+              <h2 id="approved-sessions-heading">Approved</h2>
             </div>
-            <span className="count-badge">{previousSessions.length}</span>
+            <span className="count-badge">{approvedSessions.length}</span>
           </div>
-          <SessionList emptyCopy="No previous sessions have been approved yet." sessions={previousSessions} />
+          <SessionList emptyCopy="No session notes have been approved yet." sessions={approvedSessions} />
         </section>
       </div>
     </main>

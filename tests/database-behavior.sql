@@ -37,7 +37,7 @@ select pg_temp.ok((select not public from storage.buckets where id = 'session-au
 
 set local role anon;
 select pg_temp.throws('select * from public.patients', '42501', 'Anonymous patient access is denied');
-select pg_temp.throws($q$select public.approve_note('30000000-0000-4000-8000-000000000001', null)$q$, '42501', 'Anonymous approval RPC is denied');
+select pg_temp.throws($q$select public.approve_note('30000000-0000-4000-8000-000000000001', null, true)$q$, '42501', 'Anonymous approval RPC is denied');
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000002', true);
@@ -51,7 +51,7 @@ select pg_temp.throws($q$insert into public.patients(clinician_id, display_code,
 select pg_temp.throws($q$insert into public.sessions(clinician_id, patient_id, audio_source) values('10000000-0000-4000-8000-000000000002','20000000-0000-4000-8000-000000000001','upload')$q$, '23503', 'Composite FK prevents another clinician patient link');
 select pg_temp.throws($q$select public.create_recording_session('20000000-0000-4000-8000-000000000001','41000000-0000-4000-8000-000000000001')$q$, '42501', 'Session creation verifies patient ownership');
 select pg_temp.throws($q$select public.record_consent('30000000-0000-4000-8000-000000000002','granted','v1')$q$, '42501', 'Consent RPC verifies ownership');
-select pg_temp.throws($q$select public.approve_note('30000000-0000-4000-8000-000000000001', null)$q$, '42501', 'Approval RPC verifies ownership');
+select pg_temp.throws($q$select public.approve_note('30000000-0000-4000-8000-000000000001', null, true)$q$, '42501', 'Approval RPC verifies ownership');
 
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
 select set_config('request.jwt.claims', '{"sub":"10000000-0000-4000-8000-000000000001","role":"authenticated"}', true);
@@ -168,8 +168,9 @@ select pg_temp.throws($q$select public.save_note_revision(session_id,transcript_
 select pg_temp.throws($q$select public.save_note_revision(session_id,transcript_id,1,jsonb_set(content,'{subjective,0,origin}','"clinician"')) from public.note_revisions where session_id = '30000000-0000-4000-8000-000000000002'$q$, '23514', 'Clinician observations cannot carry fabricated transcript citations');
 select pg_temp.throws($q$select public.save_note_revision(session_id,transcript_id,0,content) from public.note_revisions where session_id = '30000000-0000-4000-8000-000000000002'$q$, '40001', 'Stale draft saves fail instead of overwriting');
 select public.save_note_revision(session_id,transcript_id,1,jsonb_set(content,'{objective}','[]')) from public.note_revisions where session_id = '30000000-0000-4000-8000-000000000002';
-select pg_temp.throws($q$select public.approve_note(session_id,id) from public.note_revisions where session_id = '30000000-0000-4000-8000-000000000002' and version = 1$q$, '40001', 'Stale revision cannot be approved');
-select pg_temp.throws($q$select public.approve_note(session_id,id) from public.note_revisions where session_id = '30000000-0000-4000-8000-000000000002' and version = 2$q$, '23514', 'Incomplete SOAP can be saved but not approved');
+select pg_temp.throws($q$select public.approve_note(session_id,id,true) from public.note_revisions where session_id = '30000000-0000-4000-8000-000000000002' and version = 1$q$, '40001', 'Stale revision cannot be approved');
+select pg_temp.throws($q$select public.approve_note(session_id,id,false) from public.note_revisions where session_id = '30000000-0000-4000-8000-000000000002' and version = 2$q$, '23514', 'Approval requires explicit clinician confirmation');
+select pg_temp.throws($q$select public.approve_note(session_id,id,true) from public.note_revisions where session_id = '30000000-0000-4000-8000-000000000002' and version = 2$q$, '23514', 'Incomplete SOAP can be saved but not approved');
 select public.save_note_revision(session_id,transcript_id,2,content) from public.note_revisions where session_id = '30000000-0000-4000-8000-000000000002' and version = 1;
 select pg_temp.ok((select count(*) = 3 from public.note_revisions where session_id = '30000000-0000-4000-8000-000000000002'), 'Every draft save preserves prior versions');
 select pg_temp.throws($q$update public.transcript_segments set speaker_role = 'other' where session_id = '30000000-0000-4000-8000-000000000002'$q$, '23514', 'Referenced speaker roles are frozen with evidence');
@@ -186,11 +187,12 @@ select pg_temp.throws($q$insert into public.transcript_segments(transcript_id,se
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
 select set_config('request.jwt.claims', '{"sub":"10000000-0000-4000-8000-000000000001","role":"authenticated"}', true);
-select public.approve_note(session_id,id) from public.note_revisions where session_id = '30000000-0000-4000-8000-000000000002' and version = 3;
-select public.approve_note(session_id,id) from public.note_revisions where session_id = '30000000-0000-4000-8000-000000000002' and version = 3;
+select public.approve_note(session_id,id,true) from public.note_revisions where session_id = '30000000-0000-4000-8000-000000000002' and version = 3;
+select public.approve_note(session_id,id,true) from public.note_revisions where session_id = '30000000-0000-4000-8000-000000000002' and version = 3;
 select pg_temp.ok((select count(*) = 1 from public.approved_notes where session_id = '30000000-0000-4000-8000-000000000002'), 'Approval retries return the same snapshot');
 select pg_temp.ok((select state = 'pending_deletion' and deletion_due_at = now() + interval '24 hours' from public.audio_assets where session_id = '30000000-0000-4000-8000-000000000002'), 'Approval atomically schedules audio deletion');
 select pg_temp.ok((select snapshot->>'format' = 'SOAP' and not(snapshot ?| array['audio','transcript','object_path','is_fictional']) from public.approved_notes where session_id = '30000000-0000-4000-8000-000000000002'), 'Approved export snapshot excludes full transcript, storage paths, and demo markers');
+select pg_temp.ok((select snapshot #>> '{confirmation,confirmed}' = 'true' from public.approved_notes where session_id = '30000000-0000-4000-8000-000000000002'), 'Approved snapshot records explicit clinician confirmation');
 update public.patients set display_name = 'Later name' where id = '20000000-0000-4000-8000-000000000001';
 select pg_temp.ok((select snapshot #>> '{patient,display_name}' = 'Fictional Patient One' from public.approved_notes where session_id = '30000000-0000-4000-8000-000000000002'), 'Approval preserves patient identity at approval time');
 select pg_temp.throws($q$select public.save_note_revision(session_id,transcript_id,3,content) from public.note_revisions where session_id = '30000000-0000-4000-8000-000000000002' and version = 3$q$, '23514', 'Approved sessions reject further draft saves');

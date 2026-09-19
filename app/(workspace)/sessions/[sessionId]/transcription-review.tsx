@@ -218,8 +218,14 @@ export function TranscriptionReview({
       <div className="transcription-heading-row">
         <div>
           <p className="section-kicker">Speaker-attributed transcript</p>
-          <h2 id="transcript-review-heading">Review and confirm speakers</h2>
-          <p>Review the LLM’s role suggestions, correct them if needed, then confirm before SOAP drafting.</p>
+          <h2 id="transcript-review-heading">
+            {transcript.confirmedAt ? "Transcript evidence" : "Review and confirm speakers"}
+          </h2>
+          <p>
+            {transcript.confirmedAt
+              ? "SOAP evidence links bring the corresponding transcript segment into view."
+              : "Review the LLM’s role suggestions, correct them if needed, then confirm before SOAP drafting."}
+          </p>
         </div>
         <span className={`status-chip ${transcript.confirmedAt ? "" : "active-status"}`}>
           {transcript.confirmedAt ? "Speakers confirmed" : "Confirmation required"}
@@ -249,9 +255,9 @@ export function TranscriptionReview({
 
       <ol className="transcript-segments">
         {segments.map((segment) => (
-          <li key={segment.id}>
+          <li id={`transcript-segment-${segment.id}`} key={segment.id} tabIndex={-1}>
             <div>
-              <span>{formatTimestamp(segment.startMs)}–{formatTimestamp(segment.endMs)}</span>
+              <span>{formatTimestamp(segment.startMs)}-{formatTimestamp(segment.endMs)}</span>
               <strong>
                 {transcript.confirmedAt
                   ? roleLabel(segment.speakerRole)

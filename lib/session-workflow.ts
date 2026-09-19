@@ -22,6 +22,7 @@ export const SESSION_WORKFLOW = {
 } as const;
 
 export type SessionWorkflowState = keyof typeof SESSION_WORKFLOW;
+export type TimelineStage = "processing" | "draft" | "approved";
 
 export function getSessionWorkflowCopy(state: string | null | undefined) {
   if (state && state in SESSION_WORKFLOW) {
@@ -29,4 +30,10 @@ export function getSessionWorkflowCopy(state: string | null | undefined) {
   }
 
   return { label: "In progress", detail: "Documentation is in progress." };
+}
+
+export function getTimelineStage(state: string | null | undefined): TimelineStage {
+  if (state === "approved") return "approved";
+  if (state === "ready_for_review") return "draft";
+  return "processing";
 }

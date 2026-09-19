@@ -348,7 +348,9 @@ export async function finalizeAudioAsset(
   return { ok: true };
 }
 
-export type TranscriptionActionResult = { ok: true } | { ok: false; message: string };
+export type TranscriptionActionResult =
+  | { ok: true }
+  | { ok: false; message: string; conflict?: boolean };
 
 export async function continueTranscription(sessionId: string, jobId: string) {
   const { supabase, clinician } = await requireClinician();
@@ -494,12 +496,43 @@ export async function saveSoapDraft(
   if (error) {
     return {
       ok: false,
+      conflict: error.code === "40001",
       message: error.code === "40001"
-        ? "A newer draft exists. Refresh before saving so no edits are overwritten."
+        ? "A newer revision exists. Your edits are still here and were not overwritten. Load the latest revision when you are ready to reconcile them."
         : "We couldn’t save this SOAP revision. Review the entries and evidence, then try again.",
     };
   }
   revalidatePath(`/sessions/${sessionId}`);
+  return { ok: true };
+}
+
+export async function approveSoapNote(
+  sessionId: string,
+  noteRevisionId: string,
+  confirmed: boolean,
+): Promise<TranscriptionActionResult> {
+  const { supabase } = await requireClinician();
+  if (!confirmed) {
+    return { ok: false, message: "Confirm that you reviewed the complete note before approval." };
+  }
+
+  const { error } = await supabase.rpc("approve_note", {
+    p_session_id: sessionId,
+    p_note_revision_id: noteRevisionId,
+    p_confirmed: confirmed,
+  });
+  if (error) {
+    return {
+      ok: false,
+      conflict: error.code === "40001",
+      message: error.code === "40001"
+        ? "A newer revision exists. Load the latest revision before approving."
+        : "Approval failed. Confirm that every SOAP section is complete and the latest revision is saved.",
+    };
+  }
+
+  revalidatePath(`/sessions/${sessionId}`);
+  revalidatePath("/", "layout");
   return { ok: true };
 }
 

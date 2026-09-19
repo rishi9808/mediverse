@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import type { SoapDocument, SoapStatement } from "@/lib/soap";
 
 import {
+  approveSoapNote,
   continueDrafting,
   regenerateSoapDraft,
   retryDrafting,
@@ -14,6 +15,7 @@ import {
 
 type Job = { id: string; status: string; attempts: number };
 type SegmentReference = { id: string; startMs: number; endMs: number };
+type RevisionReference = { id: string; version: number; createdAt: string };
 type SectionName = keyof SoapDocument;
 
 const sectionNames: SectionName[] = ["subjective", "objective", "assessment", "plan"];
@@ -33,15 +35,29 @@ function cloneDocument(document: SoapDocument): SoapDocument {
   return structuredClone(document);
 }
 
+function formatSavedAt(value: string) {
+  return new Intl.DateTimeFormat("en", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 export function SoapReview({
+  approved,
   draftingJob,
   note,
+  revisions,
   segments,
   sessionId,
   transcriptId,
 }: {
+  approved: { approvedAt: string; noteRevisionId: string } | null;
   draftingJob: Job | null;
-  note: { version: number; content: SoapDocument } | null;
+  note: { id: string; version: number; content: SoapDocument } | null;
+  revisions: RevisionReference[];
   segments: SegmentReference[];
   sessionId: string;
   transcriptId: string;
@@ -51,8 +67,14 @@ export function SoapReview({
   const [document, setDocument] = useState<SoapDocument | null>(() => note ? cloneDocument(note.content) : null);
   const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState("");
+  const [conflict, setConflict] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
   const evidence = useMemo(() => new Map(segments.map((segment) => [segment.id, segment])), [segments]);
   const active = draftingJob && ["queued", "running"].includes(draftingJob.status);
+  const isApproved = Boolean(approved);
+  const isComplete = Boolean(document && sectionNames.every((section) =>
+    document[section].length > 0 && document[section].every((statement) => statement.text.trim().length > 0)));
 
   useEffect(() => {
     if (!active || !draftingJob) return;
@@ -67,7 +89,7 @@ export function SoapReview({
   }, [active, draftingJob, router, sessionId]);
 
   function updateStatement(section: SectionName, index: number, text: string) {
-    if (!document) return;
+    if (!document || isApproved) return;
     setDocument({
       ...document,
       [section]: document[section].map((statement, statementIndex) =>
@@ -77,7 +99,7 @@ export function SoapReview({
   }
 
   function removeStatement(section: SectionName, index: number) {
-    if (!document) return;
+    if (!document || isApproved) return;
     setDocument({
       ...document,
       [section]: document[section].filter((_, statementIndex) => statementIndex !== index),
@@ -86,7 +108,7 @@ export function SoapReview({
   }
 
   function addClinicianEntry(section: SectionName) {
-    if (!document) return;
+    if (!document || isApproved) return;
     const statement: SoapStatement = { text: "", origin: "clinician", segment_ids: [] };
     setDocument({ ...document, [section]: [...document[section], statement] });
     setDirty(true);
@@ -99,11 +121,16 @@ export function SoapReview({
       return;
     }
     setMessage("");
+    setConflict(false);
     startTransition(async () => {
       const result = await saveSoapDraft(sessionId, transcriptId, note.version, document);
       setMessage(result.ok ? "SOAP revision saved." : result.message);
-      if (result.ok) setDirty(false);
-      router.refresh();
+      if (result.ok) {
+        setDirty(false);
+        router.refresh();
+      } else {
+        setConflict(Boolean(result.conflict));
+      }
     });
   }
 
@@ -118,7 +145,7 @@ export function SoapReview({
   }
 
   function regenerate() {
-    if (!note) return;
+    if (!note || isApproved) return;
     if (dirty) {
       setMessage("Save or discard your edits before regenerating. They will never be overwritten silently.");
       return;
@@ -128,6 +155,23 @@ export function SoapReview({
       const result = await regenerateSoapDraft(sessionId, transcriptId, note.version);
       setMessage(result.ok ? "A new evidence-linked revision is being generated." : result.message);
       router.refresh();
+    });
+  }
+
+  function approve() {
+    if (!note || !confirmed || dirty || !isComplete || isApproved) return;
+    setMessage("");
+    setConflict(false);
+    startTransition(async () => {
+      const result = await approveSoapNote(sessionId, note.id, confirmed);
+      if (result.ok) {
+        setShowConfirmation(false);
+        router.refresh();
+      } else {
+        setMessage(result.message);
+        setConflict(Boolean(result.conflict));
+        if (result.conflict) setShowConfirmation(false);
+      }
     });
   }
 
@@ -162,10 +206,18 @@ export function SoapReview({
       <div className="transcription-heading-row">
         <div>
           <p className="section-kicker">Evidence-linked SOAP</p>
-          <h2 id="soap-review-heading">Review SOAP draft · version {note?.version}</h2>
-          <p>AI entries retain transcript evidence. Your own observations are stored separately without fabricated citations.</p>
+          <h2 id="soap-review-heading">
+            {isApproved ? `Approved SOAP note, revision ${note?.version}` : `Review SOAP draft, revision ${note?.version}`}
+          </h2>
+          <p>
+            {isApproved
+              ? `Approved ${approved ? formatSavedAt(approved.approvedAt) : ""}. This note is locked and cannot be edited.`
+              : "AI entries retain transcript evidence. Your own observations are stored separately without fabricated citations."}
+          </p>
         </div>
-        <span className="status-chip">Clinician review required</span>
+        <span className={`status-chip ${isApproved ? "" : "active-status"}`}>
+          {isApproved ? "Approved and immutable" : "Clinician review required"}
+        </span>
       </div>
 
       {active && (
@@ -179,9 +231,11 @@ export function SoapReview({
           <section className="soap-section" key={section}>
             <div className="soap-section-heading">
               <h3>{sectionLabels[section]}</h3>
-              <button className="secondary-button" type="button" onClick={() => addClinicianEntry(section)}>
-                Add clinician entry
-              </button>
+              {!isApproved && (
+                <button className="secondary-button" type="button" onClick={() => addClinicianEntry(section)}>
+                  Add clinician entry
+                </button>
+              )}
             </div>
             {document[section].length === 0 && (
               <p className="unsupported-section">No supported transcript content. Add a clinician observation if appropriate.</p>
@@ -192,25 +246,31 @@ export function SoapReview({
                   <span className={`origin-chip ${statement.origin}`}>
                     {statement.origin === "transcript" ? "Transcript-derived" : "Clinician-entered"}
                   </span>
-                  <button type="button" onClick={() => removeStatement(section, index)}>Remove</button>
+                  {!isApproved && <button type="button" onClick={() => removeStatement(section, index)}>Remove</button>}
                 </div>
                 <textarea
                   aria-label={`${sectionLabels[section]} entry ${index + 1}`}
                   onChange={(event) => updateStatement(section, index, event.target.value)}
+                  readOnly={isApproved}
                   rows={3}
                   value={statement.text}
                 />
                 {statement.origin === "transcript" ? (
                   <p className="evidence-links">
-                    Evidence: {statement.segment_ids.map((id) => {
+                    Evidence: {statement.segment_ids.map((id, evidenceIndex) => {
                       const segment = evidence.get(id);
                       return segment
-                        ? `${formatTimestamp(segment.startMs)}–${formatTimestamp(segment.endMs)}`
-                        : "Unavailable segment";
-                    }).join(", ")}
+                        ? <span key={id}>
+                            {evidenceIndex > 0 ? ", " : ""}
+                            <a href={`#transcript-segment-${id}`}>
+                              {formatTimestamp(segment.startMs)}-{formatTimestamp(segment.endMs)}
+                            </a>
+                          </span>
+                        : <span key={id}>{evidenceIndex > 0 ? ", " : ""}Unavailable segment</span>;
+                    })}
                   </p>
                 ) : (
-                  <p className="evidence-links">Clinician observation · no transcript citation required</p>
+                  <p className="evidence-links">Clinician observation, no transcript citation required</p>
                 )}
               </div>
             ))}
@@ -218,15 +278,86 @@ export function SoapReview({
         ))}
       </div>
 
-      <div className="soap-actions">
-        <button className="primary-button" disabled={pending || !dirty} type="button" onClick={save}>
-          {pending ? "Saving…" : "Save new revision"}
-        </button>
-        <button className="secondary-button" disabled={pending || Boolean(active)} type="button" onClick={regenerate}>
-          Regenerate as new revision
-        </button>
-      </div>
-      {message && <p className={message.includes("saved") || message.includes("generated") ? "audio-message" : "audio-error"} role="status">{message}</p>}
+      {!isApproved && (
+        <>
+          <div className="soap-actions">
+            <button className="primary-button" disabled={pending || !dirty} type="button" onClick={save}>
+              {pending ? "Saving…" : "Save new revision"}
+            </button>
+            <button className="secondary-button" disabled={pending || Boolean(active)} type="button" onClick={regenerate}>
+              Regenerate as new revision
+            </button>
+            <button
+              className="approve-button"
+              disabled={pending || dirty || !isComplete || Boolean(active)}
+              type="button"
+              onClick={() => {
+                setConfirmed(false);
+                setShowConfirmation(true);
+              }}
+            >
+              Approve latest revision
+            </button>
+          </div>
+          {!isComplete && (
+            <p className="approval-help">Approval requires content in Subjective, Objective, Assessment, and Plan.</p>
+          )}
+          {dirty && <p className="approval-help">Save your corrections as a new revision before approval.</p>}
+        </>
+      )}
+
+      {revisions.length > 0 && (
+        <details className="revision-history">
+          <summary>{revisions.length} saved {revisions.length === 1 ? "revision" : "revisions"}</summary>
+          <ol>
+            {revisions.map((revision) => (
+              <li key={revision.id}>
+                <span>Revision {revision.version}</span>
+                <time dateTime={revision.createdAt}>{formatSavedAt(revision.createdAt)}</time>
+                {approved?.noteRevisionId === revision.id && <strong>Approved</strong>}
+                {!approved && note?.id === revision.id && <strong>Latest</strong>}
+              </li>
+            ))}
+          </ol>
+        </details>
+      )}
+
+      {message && (
+        <div className={message.includes("saved") || message.includes("generated") ? "audio-message" : "audio-error"} role="status">
+          {message}
+          {conflict && (
+            <button className="secondary-button conflict-refresh" type="button" onClick={() => router.refresh()}>
+              Load latest revision
+            </button>
+          )}
+        </div>
+      )}
+
+      {showConfirmation && note && (
+        <div className="dialog-backdrop" role="presentation">
+          <section aria-labelledby="approval-confirmation-heading" aria-modal="true" className="approval-dialog" role="dialog">
+            <p className="section-kicker">Final clinical record</p>
+            <h2 id="approval-confirmation-heading">Approve revision {note.version}?</h2>
+            <p>Approval permanently locks this SOAP note. Further corrections require a future amendment workflow.</p>
+            <label className="consent-checkbox">
+              <input
+                checked={confirmed}
+                onChange={(event) => setConfirmed(event.target.checked)}
+                type="checkbox"
+              />
+              <span>I reviewed the complete latest revision and confirm it is ready to become the approved clinical note.</span>
+            </label>
+            <div className="dialog-actions">
+              <button className="secondary-button" disabled={pending} type="button" onClick={() => setShowConfirmation(false)}>
+                Cancel
+              </button>
+              <button className="approve-button" disabled={pending || !confirmed} type="button" onClick={approve}>
+                {pending ? "Approving…" : "Approve immutable note"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </section>
   );
 }

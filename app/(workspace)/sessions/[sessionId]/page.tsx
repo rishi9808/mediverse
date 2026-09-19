@@ -73,6 +73,8 @@ export default async function SessionPage({ params }: { params: Promise<{ sessio
     { data: draftingJob, error: draftingJobError },
     { data: transcript, error: transcriptError },
     { data: noteRevision, error: noteRevisionError },
+    { data: noteRevisions, error: noteRevisionsError },
+    { data: approvedNote, error: approvedNoteError },
   ] =
     await Promise.all([
       supabase
@@ -140,10 +142,23 @@ export default async function SessionPage({ params }: { params: Promise<{ sessio
         .order("version", { ascending: false })
         .limit(1)
         .maybeSingle(),
+      supabase
+        .from("note_revisions")
+        .select("id, version, created_at")
+        .eq("session_id", session.id)
+        .eq("clinician_id", clinician.id)
+        .order("version", { ascending: false }),
+      supabase
+        .from("approved_notes")
+        .select("note_revision_id, approved_at")
+        .eq("session_id", session.id)
+        .eq("clinician_id", clinician.id)
+        .maybeSingle(),
     ]);
 
   if (patientError || acknowledgmentError || audioAssetError || transcriptionJobError ||
-    speakerIdentificationJobError || draftingJobError || transcriptError || noteRevisionError) {
+    speakerIdentificationJobError || draftingJobError || transcriptError || noteRevisionError ||
+    noteRevisionsError || approvedNoteError) {
     return (
       <main className="workspace-page">
         <section className="state-panel error-state" role="alert">
@@ -194,6 +209,37 @@ export default async function SessionPage({ params }: { params: Promise<{ sessio
     acknowledgment.policy_version === expectedPolicyVersion
     ? acknowledgment.recorded_at
     : null;
+  const transcriptPanel = (
+    <TranscriptionReview
+      job={transcriptionJob ? {
+        id: transcriptionJob.id,
+        status: transcriptionJob.status,
+        attempts: transcriptionJob.attempts,
+      } : null}
+      speakerJob={speakerIdentificationJob ? {
+        id: speakerIdentificationJob.id,
+        status: speakerIdentificationJob.status,
+        attempts: speakerIdentificationJob.attempts,
+      } : null}
+      segments={(transcriptSegments ?? []).map((segment) => ({
+        id: segment.id,
+        speakerKey: segment.speaker_key,
+        speakerRole: segment.speaker_role,
+        suggestedSpeakerRole: segment.suggested_speaker_role,
+        startMs: segment.start_ms,
+        endMs: segment.end_ms,
+        content: segment.content,
+      }))}
+      sessionId={session.id}
+      transcript={transcript ? {
+        id: transcript.id,
+        confirmedAt: transcript.speakers_confirmed_at,
+        identifiedAt: transcript.speaker_identified_at,
+        identificationModel: transcript.speaker_identification_model,
+        source: transcript.source,
+      } : null}
+    />
+  );
 
   return (
     <main className="workspace-page session-page">
@@ -244,59 +290,40 @@ export default async function SessionPage({ params }: { params: Promise<{ sessio
         </section>
       )}
 
-      {["audio_ready", "transcribed", "ready_for_review"].includes(state) && (
-        <TranscriptionReview
-          job={transcriptionJob ? {
-            id: transcriptionJob.id,
-            status: transcriptionJob.status,
-            attempts: transcriptionJob.attempts,
-          } : null}
-          speakerJob={speakerIdentificationJob ? {
-            id: speakerIdentificationJob.id,
-            status: speakerIdentificationJob.status,
-            attempts: speakerIdentificationJob.attempts,
-          } : null}
-          segments={(transcriptSegments ?? []).map((segment) => ({
-            id: segment.id,
-            speakerKey: segment.speaker_key,
-            speakerRole: segment.speaker_role,
-            suggestedSpeakerRole: segment.suggested_speaker_role,
-            startMs: segment.start_ms,
-            endMs: segment.end_ms,
-            content: segment.content,
-          }))}
-          sessionId={session.id}
-          transcript={transcript ? {
-            id: transcript.id,
-            confirmedAt: transcript.speakers_confirmed_at,
-            identifiedAt: transcript.speaker_identified_at,
-            identificationModel: transcript.speaker_identification_model,
-            source: transcript.source,
-          } : null}
-        />
-      )}
-
-      {transcript?.speakers_confirmed_at && (
-        <SoapReview
-          key={noteRevision?.version ?? "drafting"}
-          draftingJob={draftingJob ? {
-            id: draftingJob.id,
-            status: draftingJob.status,
-            attempts: draftingJob.attempts,
-          } : null}
-          note={noteRevision ? {
-            version: noteRevision.version,
-            content: noteRevision.content as unknown as SoapDocument,
-          } : null}
-          segments={(transcriptSegments ?? []).map((segment) => ({
-            id: segment.id,
-            startMs: segment.start_ms,
-            endMs: segment.end_ms,
-          }))}
-          sessionId={session.id}
-          transcriptId={transcript.id}
-        />
-      )}
+      {transcript?.speakers_confirmed_at ? (
+        <div className="clinical-review-workspace">
+          {transcriptPanel}
+          <SoapReview
+            key={noteRevision?.version ?? "drafting"}
+            approved={approvedNote ? {
+              approvedAt: approvedNote.approved_at,
+              noteRevisionId: approvedNote.note_revision_id,
+            } : null}
+            draftingJob={draftingJob ? {
+              id: draftingJob.id,
+              status: draftingJob.status,
+              attempts: draftingJob.attempts,
+            } : null}
+            note={noteRevision ? {
+              id: noteRevision.id,
+              version: noteRevision.version,
+              content: noteRevision.content as unknown as SoapDocument,
+            } : null}
+            revisions={(noteRevisions ?? []).map((revision) => ({
+              id: revision.id,
+              version: revision.version,
+              createdAt: revision.created_at,
+            }))}
+            segments={(transcriptSegments ?? []).map((segment) => ({
+              id: segment.id,
+              startMs: segment.start_ms,
+              endMs: segment.end_ms,
+            }))}
+            sessionId={session.id}
+            transcriptId={transcript.id}
+          />
+        </div>
+      ) : ["audio_ready", "transcribed", "ready_for_review"].includes(state) ? transcriptPanel : null}
     </main>
   );
 }

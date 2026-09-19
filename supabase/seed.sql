@@ -47,7 +47,7 @@ begin
       'assessment', jsonb_build_array(jsonb_build_object('text', 'Psychologist noted use of the previously discussed strategy.', 'origin', 'transcript', 'segment_ids', jsonb_build_array(clinician_segment))),
       'plan', jsonb_build_array(jsonb_build_object('text', 'Try another short walk and review the experience next session.', 'origin', 'transcript', 'segment_ids', jsonb_build_array(clinician_segment)))
     ), 'fixture', 'fictional-soap-v1');
-    if session_number = 1 then perform public.approve_note(session_id, revision.id); end if;
+    if session_number = 1 then perform public.approve_note(session_id, revision.id, true); end if;
   end loop;
   perform set_config('request.jwt.claim.sub', coalesce(previous_subject, ''), true);
   perform set_config('request.jwt.claims', coalesce(previous_claims, '{}'), true);

@@ -395,6 +395,9 @@ a { color: inherit; }
   white-space: nowrap;
 }
 .active-status { background: #fff1d3; color: #7b5b12; }
+.timeline-processing { background: #eef1f0; color: #50625d; }
+.timeline-draft { background: #fff1d3; color: #7b5b12; }
+.timeline-approved { background: #e9f1ed; color: #31594e; }
 .state-panel {
   min-height: 21rem;
   padding: clamp(2rem, 5vw, 4rem);
@@ -519,6 +522,7 @@ a { color: inherit; }
 .patient-contact-grid dt { margin-bottom: 0.3rem; color: var(--muted); font-size: 0.68rem; font-weight: 700; }
 .patient-contact-grid dd { margin: 0; overflow-wrap: anywhere; font-size: 0.8rem; font-weight: 650; }
 .timeline-sections { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(2rem, 4vw, 4rem); padding-top: 3.5rem; }
+.milestone-timeline { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(1.5rem, 3vw, 2.5rem); }
 .count-badge { min-width: 1.7rem; height: 1.7rem; display: grid; place-items: center; border-radius: 50%; background: var(--soft); color: var(--muted); font-size: 0.72rem; font-weight: 750; }
 .session-list { border-top: 1px solid var(--line); }
 .session-row { padding: 1.25rem 0; display: flex; gap: 0.9rem; border-bottom: 1px solid var(--line); color: inherit; text-decoration: none; transition: background 140ms ease, padding 140ms ease; }
@@ -548,6 +552,20 @@ a { color: inherit; }
   border-radius: 1rem;
   background: white;
 }
+.clinical-review-workspace {
+  display: grid;
+  grid-template-columns: minmax(19rem, 0.88fr) minmax(0, 1.12fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+.clinical-review-workspace .transcription-card {
+  position: sticky;
+  top: 1.25rem;
+  max-height: calc(100dvh - 2.5rem);
+  overflow: auto;
+}
+.clinical-review-workspace .transcription-card,
+.clinical-review-workspace .soap-card { padding: clamp(1.25rem, 2.4vw, 1.75rem); }
 .workflow-card-heading h2, .audio-entry-card h2, .transcription-card h2, .soap-card h2, .acknowledgment-dialog h2 { margin: 0; font-size: 1.3rem; letter-spacing: -0.025em; }
 .workflow-card-heading p:last-child, .audio-entry-card > div > p:last-child, .dialog-intro { margin: 0.6rem 0 0; color: var(--muted); font-size: 0.8rem; line-height: 1.55; }
 .workflow-steps { margin: 2rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(5, 1fr); list-style: none; }
@@ -573,6 +591,8 @@ a { color: inherit; }
 .speaker-assignments select { min-height: 2.7rem; padding: 0 0.75rem; border: 1px solid var(--line); border-radius: 0.6rem; background: white; color: var(--ink); font: inherit; }
 .transcript-segments { margin: 1.6rem 0 0; padding: 0; display: grid; list-style: none; }
 .transcript-segments li { padding: 1rem 0; display: grid; grid-template-columns: 10rem minmax(0, 1fr); gap: 1rem; border-top: 1px solid var(--line); }
+.transcript-segments li { scroll-margin-top: 1rem; outline: none; transition: background 140ms ease, box-shadow 140ms ease; }
+.transcript-segments li:target { margin-inline: -0.65rem; padding-inline: 0.65rem; border-radius: 0.6rem; background: #e7f2ed; box-shadow: inset 3px 0 0 var(--green); }
 .transcript-segments li > div { display: flex; flex-direction: column; gap: 0.3rem; }
 .transcript-segments li span { color: var(--muted); font-size: 0.68rem; font-variant-numeric: tabular-nums; }
 .transcript-segments li strong { color: var(--green-dark); font-size: 0.76rem; }
@@ -592,8 +612,39 @@ a { color: inherit; }
 .origin-chip.transcript { background: var(--mint); color: var(--green-dark); }
 .origin-chip.clinician { background: #f1eee7; color: #655d4e; }
 .soap-statement textarea { width: 100%; resize: vertical; padding: 0.75rem; border: 1px solid var(--line); border-radius: 0.55rem; background: white; color: var(--ink); font: inherit; font-size: 0.82rem; line-height: 1.55; }
+.soap-statement textarea[readonly] { resize: none; border-color: transparent; background: var(--paper); }
 .evidence-links { margin: 0.55rem 0 0; color: var(--muted); font-size: 0.68rem; line-height: 1.45; }
+.evidence-links a { color: var(--green-dark); font-weight: 750; text-underline-offset: 0.16rem; }
+.evidence-links a:hover { color: var(--green); }
 .soap-actions { margin-top: 1.3rem; display: flex; gap: 0.7rem; flex-wrap: wrap; }
+.approve-button {
+  min-height: 2.8rem;
+  width: fit-content;
+  padding: 0 1rem;
+  border: 1px solid #174f43;
+  border-radius: 0.65rem;
+  background: #174f43;
+  color: white;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 750;
+  line-height: 1;
+  white-space: nowrap;
+  transition: background 140ms ease, transform 140ms ease;
+}
+.approve-button:hover:not(:disabled) { background: #0f3e34; }
+.approve-button:active { transform: translateY(1px); }
+.approve-button:disabled { cursor: not-allowed; opacity: 0.52; }
+.approval-help { margin: 0.65rem 0 0; color: var(--muted); font-size: 0.7rem; line-height: 1.45; }
+.revision-history { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.revision-history summary { width: fit-content; color: var(--green-dark); cursor: pointer; font-size: 0.74rem; font-weight: 750; }
+.revision-history ol { margin: 0.8rem 0 0; padding: 0; display: grid; gap: 0.5rem; list-style: none; }
+.revision-history li { display: grid; grid-template-columns: auto 1fr auto; gap: 0.65rem; align-items: center; color: var(--muted); font-size: 0.68rem; }
+.revision-history li span { color: var(--ink); font-weight: 700; }
+.revision-history li time { min-width: 0; }
+.revision-history li strong { padding: 0.2rem 0.4rem; border-radius: 999px; background: var(--mint); color: var(--green-dark); font-size: 0.6rem; }
+.conflict-refresh { min-height: 2.35rem; margin-top: 0.7rem; font-size: 0.7rem; }
 .audio-entry-controls { margin-top: 1.8rem; }
 .audio-source-tabs { width: fit-content; padding: 0.25rem; display: flex; gap: 0.2rem; border: 1px solid var(--line); border-radius: 0.75rem; background: var(--soft); }
 .audio-source-tabs button { min-height: 2.35rem; padding: 0 0.85rem; border: 0; border-radius: 0.55rem; background: transparent; color: var(--muted); cursor: pointer; font-size: 0.76rem; font-weight: 750; }
@@ -624,6 +675,9 @@ a { color: inherit; }
 @keyframes recording-pulse { 50% { box-shadow: 0 0 0 2px rgb(189 79 75 / 8%); } }
 .dialog-backdrop { position: fixed; inset: 0; z-index: 50; padding: 1rem; display: grid; place-items: center; background: rgb(13 31 27 / 48%); backdrop-filter: blur(3px); }
 .acknowledgment-dialog { width: min(100%, 31rem); padding: 1.6rem; border: 1px solid var(--line); border-radius: 1rem; background: white; box-shadow: 0 28px 80px rgb(13 31 27 / 25%); }
+.approval-dialog { width: min(100%, 34rem); padding: 1.6rem; border: 1px solid var(--line); border-radius: 1rem; background: white; box-shadow: 0 28px 80px rgb(13 31 27 / 25%); }
+.approval-dialog h2 { margin: 0; font-size: 1.35rem; letter-spacing: -0.025em; }
+.approval-dialog > p:not(.section-kicker) { margin: 0.7rem 0 1.2rem; color: var(--muted); font-size: 0.8rem; line-height: 1.55; }
 .acknowledgment-dialog form { margin-top: 1.35rem; }
 .consent-checkbox { padding: 1rem; display: grid; grid-template-columns: 1.1rem 1fr; gap: 0.75rem; align-items: flex-start; border: 1px solid var(--line); border-radius: 0.75rem; background: var(--soft); cursor: pointer; }
 .consent-checkbox input { width: 1.05rem; height: 1.05rem; margin: 0.12rem 0 0; accent-color: var(--green); }
@@ -669,6 +723,8 @@ a { color: inherit; }
   .patient-row { grid-template-columns: 2.8rem minmax(0, 1fr) auto; }
   .patient-meta { display: none; }
   .timeline-sections { grid-template-columns: 1fr; }
+  .clinical-review-workspace { grid-template-columns: 1fr; }
+  .clinical-review-workspace .transcription-card { position: static; max-height: none; overflow: visible; }
   .recording-panel, .upload-panel { align-items: stretch; flex-direction: column; }
   .transcription-heading-row { flex-direction: column; gap: 1rem; }
   .recording-buttons { flex-wrap: wrap; }
@@ -699,6 +755,7 @@ a { color: inherit; }
   .workflow-steps li::before { top: 1.55rem; right: auto; bottom: -0.8rem; left: 0.76rem; width: 1px; height: auto; }
   .dialog-actions { flex-direction: column-reverse; }
   .dialog-actions > * { width: 100%; }
+  .soap-actions > * { width: 100%; }
   .audio-source-tabs { width: 100%; }
   .audio-source-tabs button { flex: 1; }
   .recording-buttons > * { flex: 1; }

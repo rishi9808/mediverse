@@ -629,7 +629,11 @@ export type Database = {
         Returns: Database["public"]["Tables"]["transcripts"]["Row"]
       }
       approve_note: {
-        Args: { p_note_revision_id: string; p_session_id: string }
+        Args: {
+          p_confirmed: boolean
+          p_note_revision_id: string
+          p_session_id: string
+        }
         Returns: {
           approved_at: string
           clinician_id: string
