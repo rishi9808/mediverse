@@ -1,0 +1,240 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+
+import { requireClinician } from "@/lib/clinician";
+import {
+  AUDIO_UPLOAD_CONSENT_POLICY_VERSION,
+  RECORDING_CONSENT_POLICY_VERSION,
+} from "@/lib/recording-consent";
+import { getSessionWorkflowCopy, SESSION_WORKFLOW, type SessionWorkflowState } from "@/lib/session-workflow";
+
+import { RetryButton } from "../../components";
+import { AudioEntryControls } from "./audio-entry-controls";
+import { TranscriptionReview } from "./transcription-review";
+
+export const maxDuration = 300;
+
+function formatSessionDate(value: string) {
+  return new Intl.DateTimeFormat("en", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+const workflowOrder = Object.keys(SESSION_WORKFLOW) as SessionWorkflowState[];
+
+export default async function SessionPage({ params }: { params: Promise<{ sessionId: string }> }) {
+  const { sessionId } = await params;
+  const { supabase, clinician } = await requireClinician();
+  const [{ data: session, error: sessionError }, { data: timeline, error: timelineError }] =
+    await Promise.all([
+      supabase
+        .from("sessions")
+        .select("id, patient_id, occurred_at, audio_source")
+        .eq("id", sessionId)
+        .eq("clinician_id", clinician.id)
+        .maybeSingle(),
+      supabase
+        .from("patient_timeline")
+        .select("session_id, documentation_status")
+        .eq("session_id", sessionId)
+        .eq("clinician_id", clinician.id)
+        .maybeSingle(),
+    ]);
+
+  if (sessionError || timelineError) {
+    return (
+      <main className="workspace-page">
+        <section className="state-panel error-state" role="alert">
+          <span className="state-symbol" aria-hidden="true">!</span>
+          <div>
+            <h1>We couldn’t load this session</h1>
+            <p>Your data has not changed. Check your connection and try again.</p>
+            <RetryButton />
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (!session || !timeline) notFound();
+
+  const [
+    { data: patient, error: patientError },
+    { data: acknowledgment, error: acknowledgmentError },
+    { data: audioAsset, error: audioAssetError },
+    { data: transcriptionJob, error: transcriptionJobError },
+    { data: transcript, error: transcriptError },
+  ] =
+    await Promise.all([
+      supabase
+        .from("patients")
+        .select("id, display_name, display_code")
+        .eq("id", session.patient_id)
+        .eq("clinician_id", clinician.id)
+        .maybeSingle(),
+      supabase
+        .from("consent_events")
+        .select("decision, policy_version, recorded_at")
+        .eq("session_id", session.id)
+        .eq("clinician_id", clinician.id)
+        .order("event_sequence", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from("audio_assets")
+        .select("id, mime_type, state")
+        .eq("session_id", session.id)
+        .eq("clinician_id", clinician.id)
+        .neq("state", "deleted")
+        .maybeSingle(),
+      supabase
+        .from("processing_jobs")
+        .select("id, status, attempts")
+        .eq("session_id", session.id)
+        .eq("clinician_id", clinician.id)
+        .eq("kind", "transcription")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from("transcripts")
+        .select("id, source, speakers_confirmed_at")
+        .eq("session_id", session.id)
+        .eq("clinician_id", clinician.id)
+        .eq("status", "ready")
+        .order("version", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+
+  if (patientError || acknowledgmentError || audioAssetError || transcriptionJobError || transcriptError) {
+    return (
+      <main className="workspace-page">
+        <section className="state-panel error-state" role="alert">
+          <span className="state-symbol" aria-hidden="true">!</span>
+          <div>
+            <h1>We couldn’t load this session</h1>
+            <p>Your data has not changed. Check your connection and try again.</p>
+            <RetryButton />
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (!patient) notFound();
+
+  const { data: transcriptSegments, error: transcriptSegmentsError } = transcript
+    ? await supabase
+        .from("transcript_segments")
+        .select("id, speaker_key, speaker_role, start_ms, end_ms, content")
+        .eq("transcript_id", transcript.id)
+        .eq("clinician_id", clinician.id)
+        .order("ordinal")
+    : { data: [], error: null };
+
+  if (transcriptSegmentsError) {
+    return (
+      <main className="workspace-page">
+        <section className="state-panel error-state" role="alert">
+          <span className="state-symbol" aria-hidden="true">!</span>
+          <div>
+            <h1>We couldn’t load this transcript</h1>
+            <p>Your data has not changed. Check your connection and try again.</p>
+            <RetryButton />
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  const state = (timeline.documentation_status ?? "awaiting_audio") as SessionWorkflowState;
+  const stateCopy = getSessionWorkflowCopy(state);
+  const activeIndex = Math.max(0, workflowOrder.indexOf(state));
+  const expectedPolicyVersion = session.audio_source === "upload"
+    ? AUDIO_UPLOAD_CONSENT_POLICY_VERSION
+    : RECORDING_CONSENT_POLICY_VERSION;
+  const acknowledgedAt = acknowledgment?.decision === "granted" &&
+    acknowledgment.policy_version === expectedPolicyVersion
+    ? acknowledgment.recorded_at
+    : null;
+
+  return (
+    <main className="workspace-page session-page">
+      <Link className="back-link" href={`/patients/${patient.id}`}>← Back to {patient.display_name}</Link>
+      <header className="session-heading">
+        <div>
+          <p className="section-kicker">{patient.display_code} · In-person session</p>
+          <h1>Session with {patient.display_name}</h1>
+          <p>{formatSessionDate(session.occurred_at)}</p>
+        </div>
+        <span className={`status-chip ${state === "approved" ? "" : "active-status"}`}>{stateCopy.label}</span>
+      </header>
+
+      <section className="workflow-card" aria-labelledby="workflow-heading">
+        <div className="workflow-card-heading">
+          <div>
+            <p className="section-kicker">Current workflow state</p>
+            <h2 id="workflow-heading">{stateCopy.label}</h2>
+            <p>{stateCopy.detail}</p>
+          </div>
+        </div>
+        <ol className="workflow-steps">
+          {workflowOrder.map((workflowState, index) => (
+            <li
+              className={index < activeIndex ? "complete" : index === activeIndex ? "current" : ""}
+              key={workflowState}
+            >
+              <span aria-hidden="true">{index < activeIndex ? "✓" : index + 1}</span>
+              {SESSION_WORKFLOW[workflowState].label}
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      {state === "awaiting_audio" && (
+        <section className="audio-entry-card" aria-labelledby="audio-entry-heading">
+          <div>
+            <p className="section-kicker">Session audio</p>
+            <h2 id="audio-entry-heading">Add session audio</h2>
+            <p>Record in the room or upload an existing audio file. Both paths use the same private session workflow.</p>
+          </div>
+          <AudioEntryControls
+            initialAcknowledgedAt={acknowledgedAt}
+            initialAssetMimeType={audioAsset?.mime_type ?? null}
+            initialSource={session.audio_source}
+            sessionId={session.id}
+          />
+        </section>
+      )}
+
+      {["audio_ready", "transcribed", "ready_for_review"].includes(state) && (
+        <TranscriptionReview
+          job={transcriptionJob ? {
+            id: transcriptionJob.id,
+            status: transcriptionJob.status,
+            attempts: transcriptionJob.attempts,
+          } : null}
+          segments={(transcriptSegments ?? []).map((segment) => ({
+            id: segment.id,
+            speakerKey: segment.speaker_key,
+            speakerRole: segment.speaker_role,
+            startMs: segment.start_ms,
+            endMs: segment.end_ms,
+            content: segment.content,
+          }))}
+          sessionId={session.id}
+          transcript={transcript ? {
+            id: transcript.id,
+            confirmedAt: transcript.speakers_confirmed_at,
+            source: transcript.source,
+          } : null}
+        />
+      )}
+    </main>
+  );
+}

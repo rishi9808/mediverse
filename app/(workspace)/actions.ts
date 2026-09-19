@@ -1,0 +1,407 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { after } from "next/server";
+
+import {
+  MAX_AUDIO_BYTES,
+  MAX_AUDIO_DURATION_MS,
+  SUPPORTED_AUDIO_MIME_TYPES,
+  type AudioSource,
+  type SupportedAudioMimeType,
+} from "@/lib/audio";
+import { requireClinician } from "@/lib/clinician";
+import {
+  AUDIO_UPLOAD_CONSENT_POLICY_VERSION,
+  RECORDING_CONSENT_POLICY_VERSION,
+} from "@/lib/recording-consent";
+import { processTranscriptionJob } from "@/lib/transcription";
+
+export type PatientFormState = {
+  message: string;
+  errors?: {
+    displayName?: string;
+    displayCode?: string;
+    mobile?: string;
+    email?: string;
+    location?: string;
+    dateOfBirth?: string;
+    gender?: string;
+  };
+  values?: {
+    displayName: string;
+    displayCode: string;
+    mobile: string;
+    email: string;
+    location: string;
+    dateOfBirth: string;
+    gender: string;
+  };
+};
+
+function readPatientForm(formData: FormData): PatientFormState & {
+  values: NonNullable<PatientFormState["values"]>;
+} {
+  const rawName = formData.get("displayName");
+  const rawCode = formData.get("displayCode");
+  const rawMobile = formData.get("mobile");
+  const rawEmail = formData.get("email");
+  const rawLocation = formData.get("location");
+  const rawDateOfBirth = formData.get("dateOfBirth");
+  const rawGender = formData.get("gender");
+  const displayName = typeof rawName === "string" ? rawName.trim() : "";
+  const displayCode = typeof rawCode === "string" ? rawCode.trim().toUpperCase() : "";
+  const mobile = typeof rawMobile === "string" ? rawMobile.replace(/[\s()-]/g, "") : "";
+  const email = typeof rawEmail === "string" ? rawEmail.trim().toLowerCase() : "";
+  const location = typeof rawLocation === "string" ? rawLocation.trim() : "";
+  const dateOfBirth = typeof rawDateOfBirth === "string" ? rawDateOfBirth.trim() : "";
+  const gender = typeof rawGender === "string" ? rawGender.trim() : "";
+  const errors: NonNullable<PatientFormState["errors"]> = {};
+
+  if (!displayName) errors.displayName = "Enter the patient’s full name.";
+  else if (displayName.length > 120) errors.displayName = "Use 120 characters or fewer.";
+
+  if (displayCode.length > 40) errors.displayCode = "Use 40 characters or fewer.";
+  if (!/^\+[1-9]\d{7,14}$/.test(mobile)) {
+    errors.mobile = "Enter a valid mobile number with country code, such as +919876543210.";
+  }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    errors.email = "Enter a valid email address or leave this field blank.";
+  }
+  if (!location) errors.location = "Enter the patient’s location.";
+  else if (location.length > 160) errors.location = "Use 160 characters or fewer.";
+  if (dateOfBirth) {
+    const today = new Date().toISOString().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth) || dateOfBirth < "1900-01-01" || dateOfBirth > today) {
+      errors.dateOfBirth = "Enter a valid date of birth.";
+    }
+  }
+  if (gender.length > 60) errors.gender = "Use 60 characters or fewer.";
+
+  return {
+    message: Object.keys(errors).length ? "Review the highlighted fields." : "",
+    errors,
+    values: { displayName, displayCode, mobile, email, location, dateOfBirth, gender },
+  };
+}
+
+function patientWriteError(code: string | undefined): PatientFormState["message"] {
+  if (code === "23505") return "That patient reference code is already in use.";
+  return "We couldn’t save this patient. Your entries are still here, so you can try again.";
+}
+
+export async function createPatient(
+  _previousState: PatientFormState,
+  formData: FormData,
+): Promise<PatientFormState> {
+  const input = readPatientForm(formData);
+  if (Object.keys(input.errors ?? {}).length) return input;
+
+  const { supabase, clinician } = await requireClinician();
+  const { data, error } = await supabase
+    .from("patients")
+    .insert({
+      clinician_id: clinician.id,
+      display_name: input.values.displayName,
+      display_code: input.values.displayCode || `PT-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+      mobile: input.values.mobile,
+      email: input.values.email || null,
+      location: input.values.location,
+      date_of_birth: input.values.dateOfBirth || null,
+      gender: input.values.gender || null,
+    })
+    .select("id")
+    .single();
+
+  if (error || !data) {
+    return { ...input, message: patientWriteError(error?.code) };
+  }
+
+  revalidatePath("/");
+  redirect(`/patients/${data.id}`);
+}
+
+export async function updatePatient(
+  patientId: string,
+  _previousState: PatientFormState,
+  formData: FormData,
+): Promise<PatientFormState> {
+  const input = readPatientForm(formData);
+  if (Object.keys(input.errors ?? {}).length) return input;
+
+  const { supabase, clinician } = await requireClinician();
+  const { data, error } = await supabase
+    .from("patients")
+    .update({
+      display_name: input.values.displayName,
+      display_code: input.values.displayCode || `PT-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+      mobile: input.values.mobile,
+      email: input.values.email || null,
+      location: input.values.location,
+      date_of_birth: input.values.dateOfBirth || null,
+      gender: input.values.gender || null,
+    })
+    .eq("id", patientId)
+    .eq("clinician_id", clinician.id)
+    .select("id")
+    .maybeSingle();
+
+  if (error || !data) {
+    return { ...input, message: patientWriteError(error?.code) };
+  }
+
+  revalidatePath("/");
+  revalidatePath(`/patients/${patientId}`);
+  redirect(`/patients/${patientId}`);
+}
+
+export async function createRecordingSession(formData: FormData) {
+  const patientId = formData.get("patientId");
+  const clientRequestId = formData.get("clientRequestId");
+
+  if (typeof patientId !== "string" || typeof clientRequestId !== "string") {
+    throw new Error("The session request was incomplete. Please try again.");
+  }
+
+  const { supabase } = await requireClinician();
+  const { data, error } = await supabase.rpc("create_recording_session", {
+    p_patient_id: patientId,
+    p_client_request_id: clientRequestId,
+  });
+
+  if (error || !data) {
+    throw new Error("We couldn’t create this session. Please try again.");
+  }
+
+  revalidatePath(`/patients/${patientId}`);
+  redirect(`/sessions/${data.id}`);
+}
+
+export type AudioAcknowledgmentResult =
+  | { ok: true; recordedAt: string; source: AudioSource }
+  | { ok: false; message: string };
+
+export async function saveAudioAcknowledgment(
+  sessionId: string,
+  source: AudioSource,
+): Promise<AudioAcknowledgmentResult> {
+  const { supabase, clinician } = await requireClinician();
+  const { data: session, error: sessionError } = await supabase
+    .from("sessions")
+    .select("id, audio_source")
+    .eq("id", sessionId)
+    .eq("clinician_id", clinician.id)
+    .maybeSingle();
+
+  if (
+    sessionError ||
+    !session ||
+    !["pending", source].includes(session.audio_source)
+  ) {
+    return { ok: false, message: "This audio option is unavailable for the session." };
+  }
+
+  const { error: sourceError } = await supabase.rpc("select_audio_source", {
+    p_session_id: session.id,
+    p_audio_source: source,
+  });
+  if (sourceError) {
+    return { ok: false, message: "We couldn’t select this audio option. Please try again." };
+  }
+
+  const policyVersion =
+    source === "recording"
+      ? RECORDING_CONSENT_POLICY_VERSION
+      : AUDIO_UPLOAD_CONSENT_POLICY_VERSION;
+
+  const { data: consentEventId, error: consentError } = await supabase.rpc(
+    "record_consent",
+    {
+      p_session_id: session.id,
+      p_decision: "granted",
+      p_policy_version: policyVersion,
+    },
+  );
+
+  if (consentError || !consentEventId) {
+    return {
+      ok: false,
+      message: "We couldn’t save the acknowledgment. Recording has not started.",
+    };
+  }
+
+  const { data: event, error: eventError } = await supabase
+    .from("consent_events")
+    .select("recorded_at")
+    .eq("id", consentEventId)
+    .eq("clinician_id", clinician.id)
+    .single();
+
+  if (eventError || !event) {
+    return {
+      ok: false,
+      message: "We couldn’t verify the acknowledgment. Recording has not started.",
+    };
+  }
+
+  revalidatePath(`/sessions/${session.id}`);
+  return { ok: true, recordedAt: event.recorded_at, source };
+}
+
+export type PreparedAudioAsset = {
+  id: string;
+  bucketId: string;
+  objectPath: string;
+  state: string;
+};
+
+export type PrepareAudioResult =
+  | { ok: true; asset: PreparedAudioAsset }
+  | { ok: false; message: string };
+
+export async function prepareAudioAsset(
+  sessionId: string,
+  mimeType: SupportedAudioMimeType,
+  durationMs: number,
+  byteSize: number,
+): Promise<PrepareAudioResult> {
+  if (
+    !(SUPPORTED_AUDIO_MIME_TYPES as readonly string[]).includes(mimeType) ||
+    !Number.isInteger(durationMs) ||
+    durationMs < 1 ||
+    durationMs > MAX_AUDIO_DURATION_MS ||
+    !Number.isInteger(byteSize) ||
+    byteSize < 1 ||
+    byteSize > MAX_AUDIO_BYTES
+  ) {
+    return { ok: false, message: "The audio exceeds the supported format, duration, or size limits." };
+  }
+
+  const { supabase, clinician } = await requireClinician();
+  const { data: session, error: sessionError } = await supabase
+    .from("sessions")
+    .select("id, audio_source")
+    .eq("id", sessionId)
+    .eq("clinician_id", clinician.id)
+    .maybeSingle();
+  if (sessionError || !session || !["recording", "upload"].includes(session.audio_source)) {
+    return { ok: false, message: "This session is not ready for audio." };
+  }
+
+  const { data: asset, error } = await supabase.rpc("register_audio", {
+    p_session_id: session.id,
+    p_mime_type: mimeType,
+  });
+  if (error || !asset?.object_path) {
+    return {
+      ok: false,
+      message: error?.code === "23514"
+        ? "Retry with the same audio format selected for this session."
+        : "We couldn’t prepare the private audio upload. Please try again.",
+    };
+  }
+
+  return {
+    ok: true,
+    asset: {
+      id: asset.id,
+      bucketId: asset.bucket_id,
+      objectPath: asset.object_path,
+      state: asset.state,
+    },
+  };
+}
+
+export type FinalizeAudioResult = { ok: true } | { ok: false; message: string };
+
+export async function finalizeAudioAsset(
+  sessionId: string,
+  assetId: string,
+  durationMs: number,
+  byteSize: number,
+): Promise<FinalizeAudioResult> {
+  const { supabase } = await requireClinician();
+  const { data, error } = await supabase.rpc("finalize_audio_upload", {
+    p_audio_asset_id: assetId,
+    p_duration_ms: durationMs,
+    p_expected_byte_size: byteSize,
+  });
+  if (error || !data) {
+    return { ok: false, message: "The upload is incomplete. You can retry without recreating the session." };
+  }
+
+  const { data: job } = await supabase
+    .from("processing_jobs")
+    .select("id, status")
+    .eq("session_id", sessionId)
+    .eq("kind", "transcription")
+    .eq("request_key", assetId)
+    .maybeSingle();
+  if (job?.status === "queued") {
+    after(() => processTranscriptionJob(job.id, supabase));
+  }
+
+  revalidatePath(`/sessions/${sessionId}`);
+  return { ok: true };
+}
+
+export type TranscriptionActionResult = { ok: true } | { ok: false; message: string };
+
+export async function continueTranscription(sessionId: string, jobId: string) {
+  const { supabase, clinician } = await requireClinician();
+  const { data: job } = await supabase
+    .from("processing_jobs")
+    .select("id, status, attempts")
+    .eq("id", jobId)
+    .eq("session_id", sessionId)
+    .eq("clinician_id", clinician.id)
+    .eq("kind", "transcription")
+    .maybeSingle();
+  if (job && ["queued", "running"].includes(job.status) && job.attempts < 3) {
+    after(() => processTranscriptionJob(job.id, supabase));
+  }
+}
+
+export async function retryTranscription(
+  sessionId: string,
+  jobId: string,
+): Promise<TranscriptionActionResult> {
+  const { supabase } = await requireClinician();
+  const { data: job, error } = await supabase.rpc("retry_transcription_job", {
+    p_job_id: jobId,
+  });
+  if (error || !job || job.status !== "queued") {
+    return { ok: false, message: "This transcription cannot be retried again." };
+  }
+
+  after(() => processTranscriptionJob(job.id, supabase));
+  revalidatePath(`/sessions/${sessionId}`);
+  return { ok: true };
+}
+
+export async function confirmTranscriptSpeakers(
+  sessionId: string,
+  transcriptId: string,
+  assignments: Record<string, "clinician" | "patient">,
+): Promise<TranscriptionActionResult> {
+  const entries = Object.entries(assignments);
+  if (
+    entries.length === 0 ||
+    entries.some(([speaker, role]) => !speaker.trim() || !["clinician", "patient"].includes(role))
+  ) {
+    return { ok: false, message: "Assign every speaker as Psychologist or Patient." };
+  }
+
+  const { supabase } = await requireClinician();
+  const { error } = await supabase.rpc("confirm_transcript_speakers", {
+    p_transcript_id: transcriptId,
+    p_assignments: assignments,
+  });
+  if (error) {
+    return { ok: false, message: "We couldn’t confirm the speakers. Review each assignment and try again." };
+  }
+
+  revalidatePath(`/sessions/${sessionId}`);
+  return { ok: true };
+}

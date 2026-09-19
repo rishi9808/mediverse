@@ -12,3 +12,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 - The user tests browser flows manually. Do not run browser automation unless they explicitly request it.
 - After code-level checks, provide a short, concrete manual browser test checklist to save tokens.
+
+## Milestone completion
+
+- After completing and verifying each milestone, create a scoped Git commit containing that milestone's changes. Preserve unrelated worktree changes and report the commit hash.

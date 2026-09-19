@@ -1,36 +1,41 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Mediverse
 
-## Getting Started
+Psychologist-reviewed, evidence-linked SOAP progress notes with clinician-owned patient records.
 
-First, run the development server:
+## Development
+
+Run commands from this Git repository (`mediverse/` inside the outer workspace):
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install --frozen-lockfile
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The clinician workspace supports patient onboarding, contact-detail editing, session history, private audio capture/upload, durable diarized transcription, and explicit Psychologist/Patient speaker confirmation. The database foundation is implemented on Supabase Postgres: clinician ownership, patients/sessions, consent, private audio, transcript evidence, versioned SOAP drafts, immutable approval, and processing/retention metadata.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Set `OPENAI_API_KEY` in `.env` to process verified audio with `gpt-4o-transcribe-diarize`. The key is server-only and must never use a `NEXT_PUBLIC_` prefix.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Database
 
-## Learn More
+- [Database design, ER diagram, permissions, and workflow contract](docs/database-design.md)
+- [Migrations](supabase/migrations)
+- [Local fictional seed](supabase/seed.sql)
+- [Generated database types](lib/database.types.ts)
+- [SOAP content types](lib/soap.ts)
+- [Confirmed product scope](docs/project-report.md)
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+pnpm db:test               # PostgreSQL tests; no Docker or secrets needed
+pnpm lint
+pnpm exec tsc --noEmit
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+With Docker running:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+pnpm db:start              # Start local Supabase
+pnpm db:reset              # Rebuild LOCAL database and fictional fixtures
+pnpm db:types              # Generate TypeScript types from local public schema
+```
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Hosted project: **Mediverse** (`fhkujbwabvsuykjkczbk`). Apply new migrations before using the latest session workflow. Local fixtures remain synthetic and must never contain real patient information. Media deletion workers and PDF rendering are separate implementation work. The schema schedules deletion and preserves evidence; it does not itself remove audio bytes.
