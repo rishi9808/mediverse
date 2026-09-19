@@ -138,7 +138,7 @@ The fictional-data prototype should show the audio's pending-deletion state, all
 
 ## Approved-note export
 
-The first prototype provides PDF download for approved SOAP notes. The PDF includes a fictional-data banner, patient display identifier, session reference, psychologist identity, approval timestamp, SOAP content, and evidence references where useful. It excludes the full transcript and private audio/storage paths by default.
+The first prototype provides PDF download for approved SOAP notes. The PDF includes a fictional-data banner, patient display identifier, session reference, psychologist identity, approval timestamp, and SOAP content. It excludes evidence references, the full transcript, and private audio/storage paths by default.
 
 Only an approved immutable snapshot can be exported. Drafts remain editable inside Mediverse and should not produce a document that could be mistaken for an approved record. Structured EMR export, FHIR integration, bulk export, external sharing links, and transcript export remain outside the first prototype.
 

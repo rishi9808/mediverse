@@ -224,7 +224,7 @@ export function SoapReview({
         <div className="approved-note-export">
           <div>
             <strong>Approved-note PDF</strong>
-            <p>Includes approval metadata, SOAP content, and evidence timestamps. The full transcript and media location are excluded.</p>
+            <p>Includes approval metadata and SOAP content. Transcript evidence, references, and media location are excluded.</p>
           </div>
           <a className="primary-button" href={`/sessions/${sessionId}/approved-note.pdf`}>
             Download PDF

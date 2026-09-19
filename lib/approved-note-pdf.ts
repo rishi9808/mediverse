@@ -117,11 +117,6 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-function formatTimestamp(milliseconds: number) {
-  const seconds = Math.floor(milliseconds / 1000);
-  return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
-}
-
 export async function createApprovedNotePdf(rawSnapshot: unknown) {
   const snapshot = parseApprovedNoteSnapshot(rawSnapshot);
   const document = await PDFDocument.create();
@@ -185,38 +180,13 @@ export async function createApprovedNotePdf(rawSnapshot: unknown) {
   }
   y -= 14;
 
-  const evidenceById = new Map((snapshot.evidence_references ?? []).map((reference, index) =>
-    [reference.segment_id, { ...reference, label: `E${index + 1}` }]));
-
   for (const section of sectionOrder) {
     ensureSpace(40);
     page.drawText(sectionLabels[section], { x: margin, y: y - 15, font: bold, size: 15, color: rgb(0.07, 0.3, 0.34) });
     y -= 27;
     for (const [index, statement] of snapshot.content[section].entries()) {
       drawWrapped(`${index + 1}. ${statement.text}`, { indent: 8, width: contentWidth - 8, size: 10.5, lineHeight: 15 });
-      const references = statement.segment_ids.map((id) => evidenceById.get(id)?.label ?? `segment ${id.slice(0, 8)}`);
-      const evidenceLine = statement.origin === "clinician"
-        ? "Source: Clinician-entered observation"
-        : `Evidence: ${references.join(", ")}`;
-      drawWrapped(evidenceLine, { indent: 20, width: contentWidth - 20, size: 8.5, color: rgb(0.36, 0.43, 0.45), lineHeight: 13 });
       y -= 5;
-    }
-  }
-
-  if (evidenceById.size > 0) {
-    ensureSpace(44);
-    page.drawText("Evidence references", { x: margin, y: y - 15, font: bold, size: 15, color: rgb(0.07, 0.3, 0.34) });
-    y -= 29;
-    drawWrapped("References identify retained transcript segments by timestamp. Transcript text is intentionally excluded from this PDF.", {
-      size: 9, color: rgb(0.36, 0.43, 0.45), lineHeight: 13,
-    });
-    y -= 5;
-    for (const reference of evidenceById.values()) {
-      const role = reference.speaker_role === "clinician" ? "Psychologist" :
-        reference.speaker_role === "patient" ? "Patient" : "Speaker";
-      drawWrapped(`${reference.label}  ${formatTimestamp(reference.start_ms)}-${formatTimestamp(reference.end_ms)}  ${role}  Segment ${reference.segment_id}`, {
-        size: 8.5, lineHeight: 13,
-      });
     }
   }
 

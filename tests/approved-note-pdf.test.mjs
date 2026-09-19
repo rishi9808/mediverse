@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { PDFDocument } from "pdf-lib";
+import { decodePDFRawStream, PDFDocument, PDFRawStream } from "pdf-lib";
 import { createApprovedNotePdf, parseApprovedNoteSnapshot } from "../lib/approved-note-pdf.ts";
 
 const evidenceId = "11111111-1111-4111-8111-111111111111";
@@ -25,6 +25,17 @@ const snapshot = {
   evidence_references: [{ segment_id: evidenceId, start_ms: 12000, end_ms: 28400, speaker_role: "patient" }],
 };
 
+function decodedContentStreams(document) {
+  return document.context.enumerateIndirectObjects()
+    .filter(([, object]) => object instanceof PDFRawStream)
+    .map(([, stream]) => new TextDecoder("latin1").decode(decodePDFRawStream(stream).decode()))
+    .join("\n");
+}
+
+function pdfHex(value) {
+  return Buffer.from(value, "latin1").toString("hex").toUpperCase();
+}
+
 test("renders a valid approved-note PDF from the immutable snapshot", async () => {
   const bytes = await createApprovedNotePdf(snapshot);
   assert.equal(new TextDecoder().decode(bytes.slice(0, 5)), "%PDF-");
@@ -32,6 +43,11 @@ test("renders a valid approved-note PDF from the immutable snapshot", async () =
   const document = await PDFDocument.load(bytes);
   assert.equal(document.getPageCount(), 1);
   assert.equal(document.getTitle(), "Approved SOAP Note - DEMO-001");
+  const content = decodedContentStreams(document);
+  assert.match(content, new RegExp(pdfHex("Reports tension before work.")));
+  assert.doesNotMatch(content, new RegExp(pdfHex("Evidence:")));
+  assert.doesNotMatch(content, new RegExp(pdfHex("Evidence references")));
+  assert.doesNotMatch(content, new RegExp(pdfHex(evidenceId)));
 });
 
 test("rejects draft-shaped input without explicit approval confirmation", () => {
