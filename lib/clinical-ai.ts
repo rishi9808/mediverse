@@ -3,6 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database, Json } from "@/lib/database.types";
+import { buildSpeakerIdentificationInput } from "@/lib/speaker-identification";
 import type { SoapDocument, SoapStatement } from "@/lib/soap";
 
 export const CLINICAL_TEXT_MODEL = process.env.OPENAI_CLINICAL_MODEL ?? "gpt-4o-mini-2024-07-18";
@@ -168,11 +169,11 @@ async function identifySpeakerRoles(segments: TranscriptSegment[]) {
     [
       "Identify the role of every diarized speaker in this psychotherapy dialogue.",
       "Assign each exact speaker_key to clinician (the Psychologist) or patient.",
-      "Use the complete dialogue, question style, clinical framing, and first-person reports.",
+      "Use the representative excerpts, question style, clinical framing, and first-person reports.",
       "Do not rename keys, omit speakers, add speakers, or return any transcript text.",
       "The output must contain at least one clinician and one patient.",
     ].join(" "),
-    serializeTranscript(segments),
+    buildSpeakerIdentificationInput(segments),
   );
   if (!isObject(result) || !Array.isArray(result.assignments)) {
     throw new Error("INVALID_PROVIDER_RESPONSE");
@@ -272,6 +273,16 @@ export async function processSpeakerIdentificationJob(
         p_model: CLINICAL_TEXT_MODEL,
       });
       if (completeError) throw new Error("SPEAKER_IDENTIFICATION_COMMIT_FAILED");
+
+      const { data: draftingJob, error: draftingJobError } = await supabase
+        .from("processing_jobs")
+        .select("id")
+        .eq("transcript_id", claim.transcript_id)
+        .eq("kind", "drafting")
+        .eq("status", "queued")
+        .maybeSingle();
+      if (draftingJobError) throw new Error("DRAFT_HANDOFF_FAILED");
+      if (draftingJob) await processDraftingJob(draftingJob.id, supabase);
       return;
     } catch (error) {
       const { data: failedJob } = await supabase.rpc("fail_speaker_identification_job", {
