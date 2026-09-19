@@ -110,7 +110,7 @@ Later multilingual expansion should begin with one validated language pair, pres
 
 The user proposed Deepgram Nova or Whisper. Recommendation: use Deepgram Nova-3 as the first integration, with `nova-3-medical` as the initial candidate inherited from the source plan. It supports English including Indian English, and Deepgram exposes speaker diarization and timestamped utterances useful for evidence links. Sources: [model support](https://developers.deepgram.com/docs/models-languages-overview), [speaker diarization](https://developers.deepgram.com/docs/diarization), and [utterances](https://developers.deepgram.com/docs/utterances).
 
-This is an integration recommendation, not a claim that the medical variant is more accurate for psychotherapy or that it outperforms Whisper on Indian English. Compare relevant fictional therapy samples before finalizing the model variant. Check clinically meaningful word errors, negation, speaker attribution, timestamps, long-session processing, and total latency/cost. A speaker number does not identify the psychologist; the user must be able to confirm and correct speaker roles.
+This is an integration recommendation, not a claim that the medical variant is more accurate for psychotherapy or that it outperforms Whisper on Indian English. Compare relevant fictional therapy samples before finalizing the model variant. Check clinically meaningful word errors, negation, speaker attribution, timestamps, long-session processing, and total latency/cost. A speaker number does not identify the psychologist, so the LLM assigns Psychologist/Patient roles before drafting and the transcript remains visible during note review.
 
 Retain Whisper as a comparison candidate. Its hosting option and version have not been selected, so no Whisper integration, automatic provider fallback, or infrastructure commitment is implied. Keep the existing seeded transcript fallback for the prototype.
 
@@ -188,7 +188,7 @@ The target is a reviewable fictional-data prototype in seven days. If work begin
 
 ### Day 6 — reliability and representative testing
 
-- Test protected access, consent enforcement, duplicate retries, citation validity, refresh persistence, speaker correction, PDF output, audio deletion, and seeded fallback.
+- Test protected access, consent enforcement, duplicate retries, citation validity, refresh persistence, automatic speaker assignment, PDF output, audio deletion, and seeded fallback.
 - Exercise representative short and long fictional sessions, including a 90-minute processing test.
 - Fix golden-path blockers before adding polish.
 

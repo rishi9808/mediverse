@@ -44,7 +44,7 @@ UUIDs identify domain records. Dates use `timestamptz`; offsets and durations us
 The prototype uses individual clinician ownership. Teams, delegates, patient portals, and cross-clinician sharing are outside scope.
 
 - `anon` has no application-table or workflow-RPC access.
-- `authenticated` reads owned rows. It can create its clinician profile, create/edit owned patient contact details, create sessions, and confirm speaker roles before evidence is cited. Column grants prevent changing ownership, timestamps, verified media metadata, or approval data directly.
+- `authenticated` reads owned rows. It can create its clinician profile, create/edit owned patient contact details, and create sessions. The processing pipeline applies LLM speaker roles before evidence is cited. Column grants prevent changing ownership, timestamps, verified media metadata, or approval data directly.
 - Consent, audio registration, saves, and approval use authenticated RPCs. Public wrappers are security invokers. Narrowly granted implementations live in the unexposed `private` schema, check `auth.uid()`, and lock the owned session.
 - `service_role` ingests transcripts/segments, verifies audio metadata, and updates jobs. It cannot insert approved notes or revisions directly. Saving a generated draft uses a clinician-scoped authenticated client. Only an explicit authenticated clinician request approves it.
 - `patient_timeline` uses `security_invoker = true` and preserves RLS. Its documentation status is derived from saved records; worker progress/failures come from `processing_jobs` separately.
@@ -57,7 +57,7 @@ Keep `private` out of the exposed API schemas and worker credentials on the serv
 2. Present versioned consent and call `record_consent(session_id, 'granted', policy_version)` before capture/upload. Identical retries return the latest existing event. Revocation appends an event, blocks future processing and authenticated audio access, and schedules remaining audio for immediate removal. The database records the clinician's attestation; the UI must collect it.
 3. Call `register_audio(session_id, mime_type)`, which returns the same active asset for matching retries. Upload to its `bucket_id` and `object_path` with `upsert: false`. Paths are `clinician UUID/session UUID/asset UUID`, without patient names. On upload conflict, verify the existing object through the worker instead of replacing it.
 4. A trusted worker inspects the actual media and sets `duration_ms`, `byte_size`, and `state = 'verified'` together. Limits are **90 minutes** and **50 MiB**; long sessions need compressed audio. MIME types are listed in the storage migration. SQL validates metadata, not the media stream; do not trust browser-supplied measurements.
-5. Insert a `pending` transcript, insert segments, then mark it `ready`. Audio-backed transcripts require verified audio from that session. Seeded fictional transcripts use `source = 'seeded'` and no audio ID. Segment timestamps must fit the transcript. The clinician confirms/corrects speaker roles before drafting.
+5. Insert a `pending` transcript, insert segments, then mark it `ready`. Audio-backed transcripts require verified audio from that session. Seeded fictional transcripts use `source = 'seeded'` and no audio ID. Segment timestamps must fit the transcript. The LLM assigns Psychologist/Patient roles automatically before drafting.
 6. Send the full transcript to the drafting provider. Save validated output using `save_note_revision`, with the last seen version (`0` for the first save). SQLSTATE `40001` means the screen is stale: reload before retrying. Every save increments the version. Referenced transcript text and roles freeze; corrections require a new transcript version and draft revision.
 7. Explicit approval calls `approve_note(session_id, latest_revision_id, confirmed)`. The transaction requires `confirmed = true`, then checks ownership, consent, the exact latest save, complete SOAP, and media readiness. It snapshots the note with the confirmation event and schedules verified audio deletion. Retrying the same approval returns the existing snapshot. Further drafts/evidence on that approved session are rejected; amendments are a later workflow.
 8. PDF rendering reads `approved_notes.snapshot`, including patient/psychologist identity, session metadata, approval time, SOAP, and evidence references. It excludes contact details, the full transcript, and storage paths. Evidence remains separately readable by the owner.
@@ -96,7 +96,7 @@ pnpm lint
 pnpm exec tsc --noEmit
 ```
 
-`db:test` runs actual PostgreSQL using PGlite with a test-only Supabase Auth/Storage scaffold. All application migrations run unmodified. Tests cover ownership/grants, private storage policies, consent, media limits, speaker confirmation, citations, immutable revisions, stale saves/approvals, retries, evidence retention, and repeatable seeds.
+`db:test` runs actual PostgreSQL using PGlite with a test-only Supabase Auth/Storage scaffold. All application migrations run unmodified. Tests cover ownership/grants, private storage policies, consent, media limits, automatic speaker assignment, citations, immutable revisions, stale saves/approvals, retries, evidence retention, and repeatable seeds.
 
 With Docker running:
 

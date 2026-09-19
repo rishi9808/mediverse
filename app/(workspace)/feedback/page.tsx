@@ -22,7 +22,9 @@ export default async function FeedbackPage() {
   const approvedIds = new Set(approvals.map((item) => item.session_id));
   const shortAsset = assets.find((item) => item.duration_ms === 180000);
   const longAsset = assets.find((item) => item.duration_ms === 5400000);
-  const hasCorrection = (segmentsResult.data ?? []).some((segment) => segment.suggested_speaker_role && segment.suggested_speaker_role !== segment.speaker_role);
+  const automaticRolesApplied = (segmentsResult.data ?? []).some((segment) => segment.suggested_speaker_role) &&
+    (segmentsResult.data ?? []).filter((segment) => segment.suggested_speaker_role)
+      .every((segment) => ["clinician", "patient"].includes(segment.speaker_role));
   const hasCitations = approvals.some((approval) => {
     const snapshot = approval.snapshot as Snapshot;
     return Object.values(snapshot.content ?? {}).flat().some((statement) => (statement.segment_ids?.length ?? 0) > 0);
@@ -31,7 +33,7 @@ export default async function FeedbackPage() {
     { label: "Short golden path", detail: "Consent, transcript, SOAP review, approval, PDF source, and retention state", passed: Boolean(shortAsset && approvedIds.has(shortAsset.session_id) && shortAsset.state === "deleted") },
     { label: "90-minute boundary", detail: "A representative fixture is stored at exactly 5,400,000 ms and completes the workflow", passed: Boolean(longAsset && approvedIds.has(longAsset.session_id) && longAsset.state === "deleted") },
     { label: "Consent evidence", detail: "Granted consent events retain their policy decision and timestamp", passed: (consentsResult.data?.length ?? 0) >= 2 },
-    { label: "Speaker correction", detail: "A clinician-confirmed role differs from the stored model suggestion", passed: hasCorrection },
+    { label: "Automatic speaker roles", detail: "Stored Psychologist and Patient roles were completed from LLM identification without clinician selection", passed: automaticRolesApplied },
     { label: "Evidence citations", detail: "Approved SOAP snapshots retain transcript-segment references", passed: hasCitations },
     { label: "Audio deletion", detail: "Approved fixture audio has a completed deletion state and timestamp", passed: assets.filter((item) => item.state === "deleted" && item.deleted_at).length >= 2 },
     { label: "Duplicate and refresh recovery", detail: "Session request IDs, upload fingerprints, durable jobs, and revision conflicts protect retries", passed: Boolean(shortAsset && longAsset) },

@@ -385,41 +385,6 @@ export async function retryTranscription(
   return { ok: true };
 }
 
-export async function confirmTranscriptSpeakers(
-  sessionId: string,
-  transcriptId: string,
-  assignments: Record<string, "clinician" | "patient">,
-): Promise<TranscriptionActionResult> {
-  const entries = Object.entries(assignments);
-  if (
-    entries.length === 0 ||
-    entries.some(([speaker, role]) => !speaker.trim() || !["clinician", "patient"].includes(role))
-  ) {
-    return { ok: false, message: "Assign every speaker as Psychologist or Patient." };
-  }
-
-  const { supabase } = await requireClinician();
-  const { error } = await supabase.rpc("confirm_transcript_speakers", {
-    p_transcript_id: transcriptId,
-    p_assignments: assignments,
-  });
-  if (error) {
-    return { ok: false, message: "We couldn’t confirm the speakers. Review each assignment and try again." };
-  }
-
-  const { data: draftingJob } = await supabase
-    .from("processing_jobs")
-    .select("id")
-    .eq("transcript_id", transcriptId)
-    .eq("kind", "drafting")
-    .eq("status", "queued")
-    .maybeSingle();
-  if (draftingJob) after(() => processDraftingJob(draftingJob.id, supabase));
-
-  revalidatePath(`/sessions/${sessionId}`);
-  return { ok: true };
-}
-
 export async function continueSpeakerIdentification(sessionId: string, jobId: string) {
   const { supabase, clinician } = await requireClinician();
   const { data: job } = await supabase

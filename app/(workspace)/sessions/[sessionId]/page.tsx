@@ -13,6 +13,7 @@ import { RetryButton } from "../../components";
 import { FollowUpPanel } from "../../follow-up-panel";
 import { AudioEntryControls } from "./audio-entry-controls";
 import { SoapReview } from "./soap-review";
+import { TranscriptDisclosure } from "./transcript-disclosure";
 import { TranscriptionReview } from "./transcription-review";
 
 export const maxDuration = 300;
@@ -128,7 +129,7 @@ export default async function SessionPage({ params }: { params: Promise<{ sessio
         .maybeSingle(),
       supabase
         .from("transcripts")
-        .select("id, source, speakers_confirmed_at, speaker_identified_at, speaker_identification_model")
+        .select("id, source, speakers_confirmed_at, speaker_identified_at")
         .eq("session_id", session.id)
         .eq("clinician_id", clinician.id)
         .eq("status", "ready")
@@ -189,7 +190,7 @@ export default async function SessionPage({ params }: { params: Promise<{ sessio
   const { data: transcriptSegments, error: transcriptSegmentsError } = transcript
     ? await supabase
         .from("transcript_segments")
-        .select("id, speaker_key, speaker_role, suggested_speaker_role, start_ms, end_ms, content")
+        .select("id, speaker_role, start_ms, end_ms, content")
         .eq("transcript_id", transcript.id)
         .eq("clinician_id", clinician.id)
         .order("ordinal")
@@ -234,19 +235,15 @@ export default async function SessionPage({ params }: { params: Promise<{ sessio
       } : null}
       segments={(transcriptSegments ?? []).map((segment) => ({
         id: segment.id,
-        speakerKey: segment.speaker_key,
         speakerRole: segment.speaker_role,
-        suggestedSpeakerRole: segment.suggested_speaker_role,
         startMs: segment.start_ms,
         endMs: segment.end_ms,
         content: segment.content,
       }))}
       sessionId={session.id}
       transcript={transcript ? {
-        id: transcript.id,
         confirmedAt: transcript.speakers_confirmed_at,
         identifiedAt: transcript.speaker_identified_at,
-        identificationModel: transcript.speaker_identification_model,
         source: transcript.source,
       } : null}
     />
@@ -302,8 +299,7 @@ export default async function SessionPage({ params }: { params: Promise<{ sessio
       )}
 
       {transcript?.speakers_confirmed_at ? (
-        <div className="clinical-review-workspace">
-          {transcriptPanel}
+        <div className="soap-primary-workspace">
           <SoapReview
             key={noteRevision?.version ?? "drafting"}
             approved={approvedNote ? {
@@ -333,6 +329,7 @@ export default async function SessionPage({ params }: { params: Promise<{ sessio
             sessionId={session.id}
             transcriptId={transcript.id}
           />
+          <TranscriptDisclosure>{transcriptPanel}</TranscriptDisclosure>
         </div>
       ) : ["audio_ready", "transcribed", "ready_for_review"].includes(state) ? transcriptPanel : null}
 

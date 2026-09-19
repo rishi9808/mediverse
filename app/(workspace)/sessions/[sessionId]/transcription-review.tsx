@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import {
-  confirmTranscriptSpeakers,
   continueSpeakerIdentification,
   continueTranscription,
   retrySpeakerIdentification,
@@ -19,19 +18,15 @@ type Job = {
 
 type Segment = {
   id: string;
-  speakerKey: string;
   speakerRole: string;
-  suggestedSpeakerRole: string | null;
   startMs: number;
   endMs: number;
   content: string;
 };
 
 type Transcript = {
-  id: string;
   confirmedAt: string | null;
   identifiedAt: string | null;
-  identificationModel: string | null;
   source: string;
 };
 
@@ -63,21 +58,6 @@ export function TranscriptionReview({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const speakers = useMemo(() => Array.from(new Set(segments.map((segment) => segment.speakerKey))), [segments]);
-  const [assignments, setAssignments] = useState<Record<string, "" | "clinician" | "patient">>(() =>
-    Object.fromEntries(speakers.map((speaker) => [
-      speaker,
-      segments.find((segment) => segment.speakerKey === speaker)?.suggestedSpeakerRole === "clinician"
-        ? "clinician"
-        : segments.find((segment) => segment.speakerKey === speaker)?.suggestedSpeakerRole === "patient"
-          ? "patient"
-          : segments.find((segment) => segment.speakerKey === speaker)?.speakerRole === "clinician"
-            ? "clinician"
-            : segments.find((segment) => segment.speakerKey === speaker)?.speakerRole === "patient"
-              ? "patient"
-              : "",
-    ])),
-  );
   const [message, setMessage] = useState("");
   const activeJobId = job?.id;
   const activeJobStatus = job?.status;
@@ -117,23 +97,6 @@ export function TranscriptionReview({
     startTransition(async () => {
       const result = await retryTranscription(sessionId, job.id);
       if (!result.ok) setMessage(result.message);
-      router.refresh();
-    });
-  }
-
-  function confirmSpeakers() {
-    if (!transcript) return;
-    const completeAssignments = Object.fromEntries(
-      Object.entries(assignments).filter((entry): entry is [string, "clinician" | "patient"] => entry[1] !== ""),
-    );
-    if (Object.keys(completeAssignments).length !== speakers.length) {
-      setMessage("Assign every speaker before confirming.");
-      return;
-    }
-    setMessage("");
-    startTransition(async () => {
-      const result = await confirmTranscriptSpeakers(sessionId, transcript.id, completeAssignments);
-      setMessage(result.ok ? "Speaker roles confirmed. SOAP drafting is now unlocked." : result.message);
       router.refresh();
     });
   }
@@ -195,7 +158,7 @@ export function TranscriptionReview({
             <h2 id="speaker-identification-heading">
               {failed ? "Speaker identification needs attention" : "Identifying Psychologist and Patient"}
             </h2>
-            <p>The complete dialogue is being analyzed by the language model before your required confirmation.</p>
+            <p>The complete dialogue is being analyzed. Psychologist and Patient roles will be applied automatically.</p>
           </div>
           <span className={`status-chip ${failed ? "" : "active-status"}`}>
             {speakerJob?.status === "running" ? "Processing" : failed ? "Needs attention" : "Queued"}
@@ -219,39 +182,18 @@ export function TranscriptionReview({
         <div>
           <p className="section-kicker">Speaker-attributed transcript</p>
           <h2 id="transcript-review-heading">
-            {transcript.confirmedAt ? "Transcript evidence" : "Review and confirm speakers"}
+            {transcript.confirmedAt ? "Transcript evidence" : "Applying speaker roles"}
           </h2>
           <p>
             {transcript.confirmedAt
-              ? "SOAP evidence links bring the corresponding transcript segment into view."
-              : "Review the LLM’s role suggestions, correct them if needed, then confirm before SOAP drafting."}
+              ? "The LLM assigned Psychologist and Patient automatically. SOAP evidence links bring the corresponding transcript segment into view."
+              : "The LLM has identified the speakers and is applying their roles automatically before SOAP drafting."}
           </p>
         </div>
         <span className={`status-chip ${transcript.confirmedAt ? "" : "active-status"}`}>
-          {transcript.confirmedAt ? "Speakers confirmed" : "Confirmation required"}
+          {transcript.confirmedAt ? "AI-assigned speakers" : "Applying roles"}
         </span>
       </div>
-
-      {!transcript.confirmedAt && (
-        <div className="speaker-assignments">
-          {speakers.map((speaker, index) => (
-            <label key={speaker}>
-              <span>Speaker {index + 1} <small>{speaker} · LLM suggestion</small></span>
-              <select
-                value={assignments[speaker] ?? ""}
-                onChange={(event) => setAssignments((current) => ({
-                  ...current,
-                  [speaker]: event.target.value as "" | "clinician" | "patient",
-                }))}
-              >
-                <option value="">Choose role</option>
-                <option value="clinician">Psychologist</option>
-                <option value="patient">Patient</option>
-              </select>
-            </label>
-          ))}
-        </div>
-      )}
 
       <ol className="transcript-segments">
         {segments.map((segment) => (
@@ -259,9 +201,7 @@ export function TranscriptionReview({
             <div>
               <span>{formatTimestamp(segment.startMs)}-{formatTimestamp(segment.endMs)}</span>
               <strong>
-                {transcript.confirmedAt
-                  ? roleLabel(segment.speakerRole)
-                  : roleLabel(assignments[segment.speakerKey] ?? segment.speakerRole)}
+                {roleLabel(segment.speakerRole)}
               </strong>
             </div>
             <p>{segment.content}</p>
@@ -269,12 +209,7 @@ export function TranscriptionReview({
         ))}
       </ol>
 
-      {!transcript.confirmedAt && (
-        <button className="primary-button confirm-speakers-button" disabled={pending} type="button" onClick={confirmSpeakers}>
-          {pending ? "Confirming…" : "Confirm speaker roles"}
-        </button>
-      )}
-      {message && <p className={message.startsWith("Speaker roles confirmed") ? "audio-message" : "audio-error"} role="status">{message}</p>}
+      {message && <p className="audio-error" role="status">{message}</p>}
     </section>
   );
 }
