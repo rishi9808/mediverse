@@ -11,7 +11,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-The clinician workspace supports patient onboarding, contact-detail editing, session history, private audio capture/upload, durable diarized transcription, LLM-proposed Psychologist/Patient identification with explicit clinician confirmation, evidence-linked SOAP drafting, immutable approval, and approved-note PDF export.
+The clinician workspace supports a work-queue dashboard, separate patient onboarding, explicit follow-ups, patient history, private audio capture/upload, durable diarized transcription, LLM-proposed Psychologist/Patient identification with explicit clinician confirmation, evidence-linked SOAP drafting, immutable approval, approved-note PDF export, and structured psychologist feedback.
 
 Set `OPENAI_API_KEY` in `.env` to process verified audio with `gpt-4o-transcribe-diarize`, identify speakers with an LLM, and draft SOAP with Structured Outputs. The key is server-only and must never use a `NEXT_PUBLIC_` prefix. `OPENAI_CLINICAL_MODEL` optionally overrides the pinned `gpt-4o-mini-2024-07-18` default used for speaker identification and SOAP drafting.
 
@@ -43,4 +43,4 @@ pnpm db:reset              # Rebuild LOCAL database and fictional fixtures
 pnpm db:types              # Generate TypeScript types from local public schema
 ```
 
-Hosted project: **Mediverse** (`fhkujbwabvsuykjkczbk`). Apply new migrations before using the latest session workflow. Local fixtures remain synthetic and must never contain real patient information. Milestone 7 adds approved-snapshot PDF rendering and a scheduled Storage deletion worker; deployment still requires the migration, both server-only secrets, and a production Vercel deployment so the cron schedule becomes active.
+Hosted project: **Mediverse** (`fhkujbwabvsuykjkczbk`). Apply new migrations before using the latest session workflow. Local fixtures remain synthetic and must never contain real patient information. Milestone 8 adds repeatable short and exact 90-minute fixtures, reliability evidence, clinician-created follow-ups, workspace restoration, and feedback capture. Production retention still requires both server-only secrets and a deployed cron schedule.

@@ -6,6 +6,7 @@ import { getSessionWorkflowCopy, getTimelineStage, type TimelineStage } from "@/
 
 import { createRecordingSession } from "../../actions";
 import { CreateSessionButton, RetryButton } from "../../components";
+import { FollowUpPanel } from "../../follow-up-panel";
 import { CalendarIcon, EditIcon } from "../../icons";
 
 type TimelineRow = {
@@ -67,7 +68,7 @@ function SessionList({ emptyCopy, sessions }: { emptyCopy: string; sessions: Tim
 export default async function PatientDetailPage({ params }: { params: Promise<{ patientId: string }> }) {
   const { patientId } = await params;
   const { supabase, clinician } = await requireClinician();
-  const [{ data: patient, error: patientError }, { data: sessions, error: sessionsError }] =
+  const [{ data: patient, error: patientError }, { data: sessions, error: sessionsError }, { data: followUps, error: followUpsError }] =
     await Promise.all([
       supabase
         .from("patients")
@@ -82,9 +83,16 @@ export default async function PatientDetailPage({ params }: { params: Promise<{ 
         .eq("patient_id", patientId)
         .eq("clinician_id", clinician.id)
         .order("occurred_at", { ascending: false }),
+      supabase
+        .from("follow_ups")
+        .select("id, action, private_note, due_on")
+        .eq("patient_id", patientId)
+        .eq("clinician_id", clinician.id)
+        .is("completed_at", null)
+        .order("due_on"),
     ]);
 
-  if (patientError || sessionsError) {
+  if (patientError || sessionsError || followUpsError) {
     return (
       <main className="workspace-page">
         <section className="state-panel error-state" role="alert">
@@ -108,7 +116,7 @@ export default async function PatientDetailPage({ params }: { params: Promise<{ 
 
   return (
     <main className="workspace-page">
-      <Link className="back-link" href="/">← Back to patients</Link>
+      <Link className="back-link" href="/patients">← Back to patients</Link>
       <header className="patient-detail-heading">
         <div className="detail-monogram" aria-hidden="true">
           {patient.display_name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}
@@ -144,6 +152,16 @@ export default async function PatientDetailPage({ params }: { params: Promise<{ 
           <div><dt>Gender</dt><dd>{patient.gender || "Not provided"}</dd></div>
         </dl>
       </section>
+
+      <FollowUpPanel
+        followUps={(followUps ?? []).map((item) => ({
+          id: item.id,
+          action: item.action,
+          privateNote: item.private_note,
+          dueOn: item.due_on,
+        }))}
+        patientId={patient.id}
+      />
 
       <div className="timeline-sections milestone-timeline">
         <section aria-labelledby="processing-sessions-heading">

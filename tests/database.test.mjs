@@ -23,12 +23,34 @@ test('migrations and database behavior on embedded PostgreSQL', async (t) => {
     assert.ok(checks.length >= 30, 'The behavior suite must execute all checks');
     for (const check of checks) await t.test(check.check_name, () => assert.equal(check.passed, true));
 
-    await t.test('fictional seed is repeatable and includes draft and approved history', async () => {
+    await t.test('fictional seed is repeatable and includes short, long, follow-up, draft and approved history', async () => {
       const seed = await readFile(new URL('supabase/seed.sql', root), 'utf8');
       await db.exec(seed);
       await db.exec(seed);
-      const { rows } = await db.query('select (select count(*)::int from public.patients) as patients, (select count(*)::int from public.note_revisions) as revisions, (select count(*)::int from public.approved_notes) as approved');
-      assert.deepEqual(rows[0], { patients: 1, revisions: 2, approved: 1 });
+      const { rows } = await db.query(`
+        select
+          (select count(*)::int from public.patients) as patients,
+          (select count(*)::int from public.note_revisions) as revisions,
+          (select count(*)::int from public.approved_notes) as approved,
+          (select count(*)::int from public.follow_ups where completed_at is null) as follow_ups,
+          (select count(*)::int from public.audio_assets where duration_ms = 5400000 and state = 'deleted') as long_deleted
+      `);
+      assert.deepEqual(rows[0], { patients: 3, revisions: 4, approved: 3, follow_ups: 2, long_deleted: 1 });
+
+      await db.exec(`
+        select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
+        select set_config('request.jwt.claims', '{"sub":"10000000-0000-4000-8000-000000000001","role":"authenticated"}', true);
+        select public.restore_fictional_workspace();
+        select public.restore_fictional_workspace();
+      `);
+      const restored = await db.query(`
+        select
+          (select count(*)::int from public.patients where archived_at is null) as active_patients,
+          (select count(*)::int from public.patients where archived_at is null and display_code in ('FP-1042', 'FP-1087')) as expected_patients,
+          (select count(*)::int from public.follow_ups f join public.patients p on p.id = f.patient_id where p.archived_at is null and f.completed_at is null) as open_follow_ups,
+          (select count(*)::int from public.audio_assets a join public.sessions s on s.id = a.session_id join public.patients p on p.id = s.patient_id where p.archived_at is null and a.duration_ms = 5400000 and a.state = 'deleted') as active_long_deleted
+      `);
+      assert.deepEqual(restored.rows[0], { active_patients: 2, expected_patients: 2, open_follow_ups: 2, active_long_deleted: 1 });
     });
   } catch (error) {
     throw new Error([error.message, error.code, error.where, error.internalQuery].filter(Boolean).join('\n'));

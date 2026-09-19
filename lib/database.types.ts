@@ -199,6 +199,81 @@ export type Database = {
           },
         ]
       }
+      evaluation_feedback: {
+        Row: {
+          approval_minutes: number
+          clinician_id: string
+          comments: string | null
+          correction_effort: number
+          created_at: string
+          id: string
+          missing_information: string
+          note_accuracy: number
+          pilot_interest: string
+          usefulness: number
+        }
+        Insert: {
+          approval_minutes: number
+          clinician_id: string
+          comments?: string | null
+          correction_effort: number
+          created_at?: string
+          id?: string
+          missing_information: string
+          note_accuracy: number
+          pilot_interest: string
+          usefulness: number
+        }
+        Update: {
+          approval_minutes?: number
+          clinician_id?: string
+          comments?: string | null
+          correction_effort?: number
+          created_at?: string
+          id?: string
+          missing_information?: string
+          note_accuracy?: number
+          pilot_interest?: string
+          usefulness?: number
+        }
+        Relationships: []
+      }
+      follow_ups: {
+        Row: {
+          action: string
+          clinician_id: string
+          completed_at: string | null
+          created_at: string
+          due_on: string
+          id: string
+          patient_id: string
+          private_note: string | null
+          session_id: string | null
+        }
+        Insert: {
+          action: string
+          clinician_id: string
+          completed_at?: string | null
+          created_at?: string
+          due_on: string
+          id?: string
+          patient_id: string
+          private_note?: string | null
+          session_id?: string | null
+        }
+        Update: {
+          action?: string
+          clinician_id?: string
+          completed_at?: string | null
+          created_at?: string
+          due_on?: string
+          id?: string
+          patient_id?: string
+          private_note?: string | null
+          session_id?: string | null
+        }
+        Relationships: []
+      }
       note_revisions: {
         Row: {
           clinician_id: string
@@ -760,6 +835,10 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      restore_fictional_workspace: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
       }
       retry_transcription_job: {
         Args: { p_job_id: string }

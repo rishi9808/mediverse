@@ -159,7 +159,7 @@ export function TranscriptionReview({
             <h2 id="transcription-heading">{failed ? "Transcription unavailable" : "Transcribing session audio"}</h2>
             <p>
               {failed
-                ? "The audio was not transcribed. The fictional seeded transcript remains available in the demo sessions."
+                ? "The audio was not transcribed. A fictional seeded transcript remains available in the restored fixtures."
                 : "You can leave this page. Progress and bounded retry attempts are saved with the session."}
             </p>
           </div>

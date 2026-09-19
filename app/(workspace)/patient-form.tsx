@@ -47,8 +47,9 @@ export function PatientForm({
   return (
     <form action={formAction} className="patient-form" noValidate>
       <div className="form-section-heading">
+        <span>Identity and contact</span>
         <h2>Patient information</h2>
-        <p>Enter the patient’s contact and demographic details.</p>
+        <p>Required details used to identify and contact this patient.</p>
       </div>
 
       <div className="field-group">
@@ -118,6 +119,12 @@ export function PatientForm({
         />
         <p className="field-help" id="location-help">City, district, or locality.</p>
         {state.errors?.location && <p className="field-error" id="location-error">{state.errors.location}</p>}
+      </div>
+
+      <div className="form-section-heading secondary-form-section">
+        <span>Optional demographics</span>
+        <h2>Additional details</h2>
+        <p>Add only information the clinic needs for the patient record.</p>
       </div>
 
       <div className="form-field-grid">

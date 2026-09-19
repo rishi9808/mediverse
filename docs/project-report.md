@@ -134,7 +134,7 @@ The consent gate, explicit clinician approval, private storage, ownership isolat
 
 After the psychologist approves the SOAP note, Mediverse deletes the associated session audio following a short configurable grace period and retains the transcript for evidence and review. The transcript remains separate from the approved note and must not be treated as the clinical record merely because it is retained.
 
-The fictional-data prototype should show the audio's pending-deletion state, allow an explicit demo reset, and verify that deleting audio does not break the transcript, citations, approved note, or patient timeline. The exact grace period, transcript lifetime, deletion exceptions, and real-patient retention policy remain subject to validation before a pilot.
+The fictional-data prototype should show the audio's pending-deletion state, allow an explicit fixture reset, and verify that deleting audio does not break the transcript, citations, approved note, or patient timeline. The exact grace period, transcript lifetime, deletion exceptions, and real-patient retention policy remain subject to validation before a pilot.
 
 ## Approved-note export
 

@@ -10,6 +10,7 @@ import { getSessionWorkflowCopy, SESSION_WORKFLOW, type SessionWorkflowState } f
 import type { SoapDocument } from "@/lib/soap";
 
 import { RetryButton } from "../../components";
+import { FollowUpPanel } from "../../follow-up-panel";
 import { AudioEntryControls } from "./audio-entry-controls";
 import { SoapReview } from "./soap-review";
 import { TranscriptionReview } from "./transcription-review";
@@ -175,6 +176,16 @@ export default async function SessionPage({ params }: { params: Promise<{ sessio
 
   if (!patient) notFound();
 
+  const { data: followUps, error: followUpsError } = await supabase
+    .from("follow_ups")
+    .select("id, action, private_note, due_on")
+    .eq("patient_id", patient.id)
+    .eq("clinician_id", clinician.id)
+    .is("completed_at", null)
+    .order("due_on");
+
+  if (followUpsError) throw new Error("We couldn’t load the follow-ups for this session.");
+
   const { data: transcriptSegments, error: transcriptSegmentsError } = transcript
     ? await supabase
         .from("transcript_segments")
@@ -324,6 +335,14 @@ export default async function SessionPage({ params }: { params: Promise<{ sessio
           />
         </div>
       ) : ["audio_ready", "transcribed", "ready_for_review"].includes(state) ? transcriptPanel : null}
+
+      {(noteRevision || approvedNote) && (
+        <FollowUpPanel
+          followUps={(followUps ?? []).map((item) => ({ id: item.id, action: item.action, privateNote: item.private_note, dueOn: item.due_on }))}
+          patientId={patient.id}
+          sessionId={session.id}
+        />
+      )}
     </main>
   );
 }

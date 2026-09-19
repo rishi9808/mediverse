@@ -121,7 +121,8 @@ export async function createPatient(
   }
 
   revalidatePath("/");
-  redirect(`/patients/${data.id}`);
+  revalidatePath("/patients");
+  redirect(`/?onboarded=${data.id}`);
 }
 
 export async function updatePatient(
@@ -558,4 +559,108 @@ export async function regenerateSoapDraft(
   after(() => processDraftingJob(job.id, supabase));
   revalidatePath(`/sessions/${sessionId}`);
   return { ok: true };
+}
+
+export type FollowUpFormState = { ok?: boolean; message: string };
+
+export async function createFollowUp(
+  _previousState: FollowUpFormState,
+  formData: FormData,
+): Promise<FollowUpFormState> {
+  const patientId = formData.get("patientId");
+  const sessionId = formData.get("sessionId");
+  const rawAction = formData.get("action");
+  const rawNote = formData.get("privateNote");
+  const dueOn = formData.get("dueOn");
+  const action = typeof rawAction === "string" ? rawAction.trim() : "";
+  const privateNote = typeof rawNote === "string" ? rawNote.trim() : "";
+
+  if (typeof patientId !== "string" || !patientId || !action || action.length > 240) {
+    return { message: "Enter a follow-up action of 240 characters or fewer." };
+  }
+  if (typeof dueOn !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(dueOn)) {
+    return { message: "Choose a valid follow-up date." };
+  }
+  if (privateNote.length > 2000) return { message: "Use 2,000 characters or fewer for the private note." };
+
+  const { supabase, clinician } = await requireClinician();
+  const { error } = await supabase.from("follow_ups").insert({
+    clinician_id: clinician.id,
+    patient_id: patientId,
+    session_id: typeof sessionId === "string" && sessionId ? sessionId : null,
+    action,
+    private_note: privateNote || null,
+    due_on: dueOn,
+  });
+  if (error) return { message: "We couldn’t save this follow-up. Check the patient and date, then try again." };
+
+  revalidatePath("/");
+  revalidatePath(`/patients/${patientId}`);
+  return { ok: true, message: "Follow-up added to the work queue." };
+}
+
+export async function completeFollowUp(followUpId: string, patientId: string) {
+  const { supabase, clinician } = await requireClinician();
+  const { error } = await supabase.from("follow_ups").update({ completed_at: new Date().toISOString() })
+    .eq("id", followUpId).eq("patient_id", patientId).eq("clinician_id", clinician.id).is("completed_at", null);
+  if (error) return { ok: false, message: "We couldn’t complete this follow-up." };
+  revalidatePath("/");
+  revalidatePath(`/patients/${patientId}`);
+  return { ok: true, message: "Follow-up completed." };
+}
+
+export async function rescheduleFollowUp(followUpId: string, patientId: string, dueOn: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dueOn)) return { ok: false, message: "Choose a valid date." };
+  const { supabase, clinician } = await requireClinician();
+  const { error } = await supabase.from("follow_ups").update({ due_on: dueOn })
+    .eq("id", followUpId).eq("patient_id", patientId).eq("clinician_id", clinician.id).is("completed_at", null);
+  if (error) return { ok: false, message: "We couldn’t reschedule this follow-up." };
+  revalidatePath("/");
+  revalidatePath(`/patients/${patientId}`);
+  return { ok: true, message: "Follow-up rescheduled." };
+}
+
+export type FeedbackFormState = { ok?: boolean; message: string };
+
+export async function submitEvaluationFeedback(
+  _previousState: FeedbackFormState,
+  formData: FormData,
+): Promise<FeedbackFormState> {
+  const number = (name: string) => Number(formData.get(name));
+  const noteAccuracy = number("noteAccuracy");
+  const correctionEffort = number("correctionEffort");
+  const approvalMinutes = number("approvalMinutes");
+  const usefulness = number("usefulness");
+  const missingInformation = String(formData.get("missingInformation") ?? "").trim();
+  const comments = String(formData.get("comments") ?? "").trim();
+  const pilotInterest = String(formData.get("pilotInterest") ?? "");
+  if (![noteAccuracy, correctionEffort, usefulness].every((value) => Number.isInteger(value) && value >= 1 && value <= 5)) {
+    return { message: "Choose a rating for accuracy, correction effort, and usefulness." };
+  }
+  if (!Number.isInteger(approvalMinutes) || approvalMinutes < 0 || approvalMinutes > 240) {
+    return { message: "Enter an approval time between 0 and 240 minutes." };
+  }
+  if (!missingInformation || missingInformation.length > 2000 || comments.length > 2000 || !["yes", "maybe", "no"].includes(pilotInterest)) {
+    return { message: "Complete the required feedback fields and keep responses under 2,000 characters." };
+  }
+  const { supabase, clinician } = await requireClinician();
+  const { error } = await supabase.from("evaluation_feedback").insert({
+    clinician_id: clinician.id,
+    note_accuracy: noteAccuracy,
+    missing_information: missingInformation,
+    correction_effort: correctionEffort,
+    approval_minutes: approvalMinutes,
+    usefulness,
+    pilot_interest: pilotInterest,
+    comments: comments || null,
+  });
+  return error ? { message: "We couldn’t save your feedback. Your responses are still here." } : { ok: true, message: "Thank you. Your feedback was saved." };
+}
+
+export async function restoreFictionalWorkspace() {
+  const { supabase } = await requireClinician();
+  const { error } = await supabase.rpc("restore_fictional_workspace");
+  if (error) return { ok: false, message: "The fictional workspace could not be restored." };
+  revalidatePath("/", "layout");
+  return { ok: true, message: "Fictional patients, sessions, follow-ups, and reliability fixtures were restored." };
 }
