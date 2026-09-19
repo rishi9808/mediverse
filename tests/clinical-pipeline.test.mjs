@@ -24,11 +24,13 @@ const segments = [
 
 test("initial clinical generation produces speaker roles and SOAP in one provider request", async () => {
   let calls = 0;
-  const result = await generateInitialClinicalDraft(segments, async (schemaName, _schema, _system, input) => {
+  const result = await generateInitialClinicalDraft(segments, async (schemaName, schema, _system, input) => {
     calls += 1;
     assert.equal(schemaName, "speaker_roles_and_evidence_linked_soap");
     assert.match(input, /segment-1/);
     assert.match(input, /segment-2/);
+    assert.deepEqual(schema.properties.assignments.items.properties.speaker_key.enum, ["speaker_0", "speaker_1"]);
+    assert.deepEqual(schema.properties.soap.properties.subjective.items.properties.segment_ids.items.enum, ["segment-1", "segment-2"]);
     return {
       assignments: [
         { speaker_key: "speaker_0", role: "clinician" },
@@ -62,6 +64,6 @@ test("initial clinical generation rejects SOAP evidence outside the transcript",
         plan: [],
       },
     })),
-    /INVALID_PROVIDER_RESPONSE/,
+    /INVALID_SOAP_EVIDENCE/,
   );
 });

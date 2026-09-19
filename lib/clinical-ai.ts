@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   generateInitialClinicalDraft,
   serializeTranscript,
-  soapSchema,
+  soapSchemaForTranscript,
   type TranscriptSegment,
   validateSoapOutput,
 } from "@/lib/clinical-pipeline";
@@ -95,13 +95,16 @@ async function requestStructuredOutput<T>(
   const payload = await response.json() as ChatCompletionPayload;
   const choice = payload.choices?.[0];
   if (choice?.message?.refusal) throw new Error("OPENAI_REFUSED");
-  if (choice?.finish_reason !== "stop" || !choice.message?.content) {
-    throw new Error("INVALID_PROVIDER_RESPONSE");
+  if (choice?.finish_reason !== "stop") {
+    throw new Error(choice?.finish_reason === "length" ? "OPENAI_OUTPUT_TRUNCATED" : "OPENAI_OUTPUT_INCOMPLETE");
+  }
+  if (!choice.message?.content) {
+    throw new Error("OPENAI_OUTPUT_EMPTY");
   }
   try {
     return JSON.parse(choice.message.content) as T;
   } catch {
-    throw new Error("INVALID_PROVIDER_RESPONSE");
+    throw new Error("OPENAI_OUTPUT_INVALID_JSON");
   }
 }
 
@@ -109,7 +112,7 @@ async function draftSoap(segments: TranscriptSegment[]) {
   const validSegmentIds = new Set(segments.map((segment) => segment.id));
   const result = await requestStructuredOutput<unknown>(
     "evidence_linked_soap",
-    soapSchema,
+    soapSchemaForTranscript(segments),
     [
       "Draft a concise psychotherapy SOAP progress note from the complete confirmed transcript.",
       "Use only facts supported by the dialogue. Do not diagnose, infer unspoken observations, or invent risk, appearance, behavior, medication, examination, or treatment details.",

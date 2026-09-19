@@ -51,15 +51,26 @@ export const soapSchema = {
   additionalProperties: false,
 } as const;
 
-const initialClinicalDraftSchema = {
-  type: "object",
-  properties: {
-    assignments: speakerAssignmentSchema,
-    soap: soapSchema,
-  },
-  required: ["assignments", "soap"],
-  additionalProperties: false,
-} as const;
+export function soapSchemaForTranscript(segments: TranscriptSegment[]) {
+  const ids = segments.map((segment) => segment.id);
+  // Four SOAP sections repeat this enum. Bound schema size for long recordings.
+  if (ids.length > 200) return soapSchema;
+  const statement = {
+    ...soapStatementSchema,
+    properties: {
+      ...soapStatementSchema.properties,
+      segment_ids: { type: "array", items: { type: "string", enum: ids } },
+    },
+  };
+  return {
+    ...soapSchema,
+    properties: Object.fromEntries(
+      Object.keys(soapSchema.properties).map((section) => [
+        section, { type: "array", items: statement },
+      ]),
+    ),
+  };
+}
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && !Array.isArray(value) && typeof value === "object";
@@ -77,7 +88,7 @@ export function serializeTranscript(segments: TranscriptSegment[], includeRoles 
 }
 
 function validateSpeakerAssignments(value: unknown, segments: TranscriptSegment[]) {
-  if (!Array.isArray(value)) throw new Error("INVALID_PROVIDER_RESPONSE");
+  if (!Array.isArray(value)) throw new Error("INVALID_SPEAKER_ASSIGNMENTS");
   const expectedSpeakers = new Set(segments.map((segment) => segment.speaker_key));
   if (expectedSpeakers.size < 2) throw new Error("SPEAKER_IDENTIFICATION_UNAVAILABLE");
 
@@ -86,36 +97,39 @@ function validateSpeakerAssignments(value: unknown, segments: TranscriptSegment[
     if (!isObject(item) || typeof item.speaker_key !== "string" ||
       !["clinician", "patient"].includes(String(item.role)) ||
       !expectedSpeakers.has(item.speaker_key) || assignments[item.speaker_key]) {
-      throw new Error("INVALID_PROVIDER_RESPONSE");
+      throw new Error("INVALID_SPEAKER_ASSIGNMENTS");
     }
     assignments[item.speaker_key] = item.role as "clinician" | "patient";
   }
   if (Object.keys(assignments).length !== expectedSpeakers.size ||
     !Object.values(assignments).includes("clinician") ||
     !Object.values(assignments).includes("patient")) {
-    throw new Error("INVALID_PROVIDER_RESPONSE");
+    throw new Error("INVALID_SPEAKER_ASSIGNMENTS");
   }
   return assignments;
 }
 
 export function validateSoapOutput(value: unknown, validSegmentIds: Set<string>): SoapDocument {
-  if (!isObject(value)) throw new Error("INVALID_PROVIDER_RESPONSE");
+  if (!isObject(value)) throw new Error("INVALID_SOAP_STRUCTURE");
   const sections = ["subjective", "objective", "assessment", "plan"] as const;
   if (Object.keys(value).length !== sections.length || sections.some((section) => !(section in value))) {
-    throw new Error("INVALID_PROVIDER_RESPONSE");
+    throw new Error("INVALID_SOAP_STRUCTURE");
   }
   return Object.fromEntries(sections.map((section) => {
     const rawStatements = value[section];
     if (!Array.isArray(rawStatements) || rawStatements.length > 100) {
-      throw new Error("INVALID_PROVIDER_RESPONSE");
+      throw new Error("INVALID_SOAP_STRUCTURE");
     }
     const statements: SoapStatement[] = rawStatements.map((statement) => {
       if (!isObject(statement) || Object.keys(statement).length !== 2 ||
         typeof statement.text !== "string" || !statement.text.trim() ||
         statement.text.trim().length > 10_000 || !Array.isArray(statement.segment_ids) ||
-        statement.segment_ids.length === 0 || statement.segment_ids.length > 100 ||
+        statement.segment_ids.length > 100) {
+        throw new Error("INVALID_SOAP_STRUCTURE");
+      }
+      if (statement.segment_ids.length === 0 ||
         statement.segment_ids.some((id) => typeof id !== "string" || !validSegmentIds.has(id))) {
-        throw new Error("INVALID_PROVIDER_RESPONSE");
+        throw new Error("INVALID_SOAP_EVIDENCE");
       }
       return {
         text: statement.text.trim(),
@@ -131,6 +145,26 @@ export async function generateInitialClinicalDraft(
   segments: TranscriptSegment[],
   requestStructuredOutput: StructuredOutputRequester,
 ) {
+  const speakers = [...new Set(segments.map((segment) => segment.speaker_key))];
+  if (speakers.length < 2) throw new Error("SPEAKER_IDENTIFICATION_UNAVAILABLE");
+  const initialClinicalDraftSchema = {
+    type: "object",
+    properties: {
+      assignments: {
+        ...speakerAssignmentSchema,
+        items: {
+          ...speakerAssignmentSchema.items,
+          properties: {
+            ...speakerAssignmentSchema.items.properties,
+            speaker_key: { type: "string", enum: speakers },
+          },
+        },
+      },
+      soap: soapSchemaForTranscript(segments),
+    },
+    required: ["assignments", "soap"],
+    additionalProperties: false,
+  };
   const result = await requestStructuredOutput(
     "speaker_roles_and_evidence_linked_soap",
     initialClinicalDraftSchema,

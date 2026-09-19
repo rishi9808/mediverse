@@ -158,7 +158,9 @@ export function TranscriptionReview({
             <h2 id="speaker-identification-heading">
               {failed ? "Speaker identification needs attention" : "Identifying Psychologist and Patient"}
             </h2>
-            <p>The complete dialogue is being analyzed. Psychologist and Patient roles will be applied automatically.</p>
+            <p>{failed
+              ? "Automatic report generation could not complete. Your transcript is saved; you do not need to upload the audio again."
+              : "The dialogue is being analyzed to assign speaker roles and prepare your SOAP report automatically."}</p>
           </div>
           <span className={`status-chip ${failed ? "" : "active-status"}`}>
             {speakerJob?.status === "running" ? "Processing" : failed ? "Needs attention" : "Queued"}

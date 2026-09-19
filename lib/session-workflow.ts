@@ -9,7 +9,7 @@ export const SESSION_WORKFLOW = {
   },
   transcribed: {
     label: "Transcribed",
-    detail: "Transcript is ready for speaker review and confirmation.",
+    detail: "Transcription is complete. Speaker roles are assigned automatically before the SOAP draft is ready.",
   },
   ready_for_review: {
     label: "Review draft",
