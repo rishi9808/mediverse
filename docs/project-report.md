@@ -170,7 +170,7 @@ The target is a reviewable fictional-data prototype in seven days. If work begin
 
 ### Day 3 — transcription
 
-- Integrate Deepgram Nova-3 Medical for post-session transcription with diarization, utterances, timestamps, and safe retries.
+- Integrate Deepgram Nova-3 for post-session transcription with diarization, utterances, timestamps, and safe retries, retaining OpenAI diarized transcription as a configuration fallback.
 - Normalize both audio paths into the same transcript-segment structure.
 - Provide speaker-role confirmation and the seeded transcript fallback.
 

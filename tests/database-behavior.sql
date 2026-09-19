@@ -105,12 +105,40 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
 select set_config('request.jwt.claims', '{"sub":"10000000-0000-4000-8000-000000000001","role":"authenticated"}', true);
 select public.claim_transcription_job(id) from public.processing_jobs where session_id = '30000000-0000-4000-8000-000000000003' and request_key = (select id from public.audio_assets where session_id = '30000000-0000-4000-8000-000000000003');
+select pg_temp.throws($q$
+  select public.complete_transcription_job(id,
+    '[{"id":"segment-0","speaker":"speaker_0","text":"Test","start_ms":0,"end_ms":1000}]',
+    'untrusted-provider', 'untrusted-model')
+  from public.processing_jobs where session_id = '30000000-0000-4000-8000-000000000003'
+    and request_key = (select id from public.audio_assets where session_id = '30000000-0000-4000-8000-000000000003')
+$q$, '23514', 'Transcription completion only accepts approved provider and model pairs');
 select public.fail_transcription_job(id, 'OPENAI_UNAVAILABLE') from public.processing_jobs where session_id = '30000000-0000-4000-8000-000000000003' and request_key = (select id from public.audio_assets where session_id = '30000000-0000-4000-8000-000000000003');
 select public.claim_transcription_job(id) from public.processing_jobs where session_id = '30000000-0000-4000-8000-000000000003' and request_key = (select id from public.audio_assets where session_id = '30000000-0000-4000-8000-000000000003');
 select public.fail_transcription_job(id, 'OPENAI_UNAVAILABLE') from public.processing_jobs where session_id = '30000000-0000-4000-8000-000000000003' and request_key = (select id from public.audio_assets where session_id = '30000000-0000-4000-8000-000000000003');
 select public.claim_transcription_job(id) from public.processing_jobs where session_id = '30000000-0000-4000-8000-000000000003' and request_key = (select id from public.audio_assets where session_id = '30000000-0000-4000-8000-000000000003');
 select public.fail_transcription_job(id, 'OPENAI_UNAVAILABLE') from public.processing_jobs where session_id = '30000000-0000-4000-8000-000000000003' and request_key = (select id from public.audio_assets where session_id = '30000000-0000-4000-8000-000000000003');
 select pg_temp.ok((select status = 'failed' and attempts = 3 and error_code = 'OPENAI_UNAVAILABLE' and locked_until is null from public.processing_jobs where session_id = '30000000-0000-4000-8000-000000000003' and request_key = (select id from public.audio_assets where session_id = '30000000-0000-4000-8000-000000000003')), 'Transcription retries stop after three sanitized attempts');
+select public.create_recording_session('20000000-0000-4000-8000-000000000001','42000000-0000-4000-8000-000000000001');
+select public.record_consent(id, 'granted', 'provider-metadata-test-v1') from public.sessions where client_request_id = '42000000-0000-4000-8000-000000000001';
+select public.select_audio_source(id, 'upload') from public.sessions where client_request_id = '42000000-0000-4000-8000-000000000001';
+select public.register_audio(id, 'audio/webm') from public.sessions where client_request_id = '42000000-0000-4000-8000-000000000001';
+insert into storage.objects(bucket_id,name,metadata)
+  select bucket_id, object_path, '{"size":2000,"mimetype":"audio/webm"}' from public.audio_assets
+  where session_id = (select id from public.sessions where client_request_id = '42000000-0000-4000-8000-000000000001');
+select public.finalize_audio_upload(id, 2000, 2000) from public.audio_assets
+  where session_id = (select id from public.sessions where client_request_id = '42000000-0000-4000-8000-000000000001');
+select public.claim_transcription_job(id) from public.processing_jobs
+  where session_id = (select id from public.sessions where client_request_id = '42000000-0000-4000-8000-000000000001') and kind = 'transcription';
+select public.complete_transcription_job(id,
+  '[{"id":"deepgram-utterance-0","speaker":"speaker_0","text":"Fictional test utterance.","start_ms":0,"end_ms":2000}]',
+  'deepgram', 'nova-3')
+from public.processing_jobs
+where session_id = (select id from public.sessions where client_request_id = '42000000-0000-4000-8000-000000000001') and kind = 'transcription';
+select pg_temp.ok((select provider = 'deepgram' and model = 'nova-3' and status = 'ready' from public.transcripts
+  where session_id = (select id from public.sessions where client_request_id = '42000000-0000-4000-8000-000000000001')),
+  'Completed transcripts record the selected Deepgram provider and model');
+select public.record_consent(id, 'revoked', 'provider-metadata-test-v1') from public.sessions
+  where client_request_id = '42000000-0000-4000-8000-000000000001';
 set local role service_role;
 select set_config('request.jwt.claim.sub', '', true);
 select set_config('request.jwt.claims', '{"role":"service_role"}', true);

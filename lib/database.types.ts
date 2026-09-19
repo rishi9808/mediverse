@@ -687,7 +687,12 @@ export type Database = {
         Returns: Json
       }
       complete_transcription_job: {
-        Args: { p_job_id: string; p_segments: Json }
+        Args: {
+          p_job_id: string
+          p_model: string
+          p_provider: string
+          p_segments: Json
+        }
         Returns: Database["public"]["Tables"]["transcripts"]["Row"]
       }
       complete_drafting_job: {
