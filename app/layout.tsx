@@ -4,6 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Mediverse",
   description: "Clinician-reviewed, evidence-linked SOAP progress notes.",
+  icons: { icon: { url: "/mediverse-logo.svg", type: "image/svg+xml" } },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

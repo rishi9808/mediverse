@@ -5,7 +5,8 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { logout } from "../login/actions";
-import { CalendarIcon, EditIcon, PatientsIcon, PlusIcon } from "./icons";
+import { MediverseLogo } from "../mediverse-logo";
+import { CalendarIcon, EditIcon, PatientsIcon, PlusIcon, SidebarIcon } from "./icons";
 
 const navigation = [
   { href: "/", label: "Dashboard", icon: CalendarIcon },
@@ -50,17 +51,18 @@ export function WorkspaceSidebar({
     <aside className={`workspace-sidebar${collapsed ? " collapsed" : ""}`}>
       <div className="sidebar-topline">
         <Link className="workspace-brand" href="/" aria-label="Mediverse dashboard">
-          <span className="brand-mark small" aria-hidden="true"><span /><span /></span>
+          <MediverseLogo small />
           <span className="sidebar-label">Mediverse</span>
         </Link>
         <button
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={!collapsed}
           className="sidebar-toggle"
           onClick={toggleSidebar}
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           type="button"
         >
-          <span aria-hidden="true">{collapsed ? ">" : "<"}</span>
+          <SidebarIcon collapsed={collapsed} />
         </button>
       </div>
 

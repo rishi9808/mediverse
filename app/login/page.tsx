@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
 import { LoginForm } from "./login-form";
+import { MediverseLogo } from "../mediverse-logo";
 
 export default async function LoginPage() {
   const supabase = await createClient();
@@ -13,7 +14,7 @@ export default async function LoginPage() {
   return (
     <main className="login-page">
       <section className="login-intro" aria-labelledby="login-heading">
-        <div className="brand-mark" aria-hidden="true"><span /><span /></div>
+        <MediverseLogo />
         <div>
           <p className="eyebrow">Mediverse</p>
           <h1 id="login-heading">Clinical notes, kept clear and reviewable.</h1>
