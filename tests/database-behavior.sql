@@ -191,7 +191,9 @@ select public.approve_note(session_id,id,true) from public.note_revisions where 
 select public.approve_note(session_id,id,true) from public.note_revisions where session_id = '30000000-0000-4000-8000-000000000002' and version = 3;
 select pg_temp.ok((select count(*) = 1 from public.approved_notes where session_id = '30000000-0000-4000-8000-000000000002'), 'Approval retries return the same snapshot');
 select pg_temp.ok((select state = 'pending_deletion' and deletion_due_at = now() + interval '24 hours' from public.audio_assets where session_id = '30000000-0000-4000-8000-000000000002'), 'Approval atomically schedules audio deletion');
-select pg_temp.ok((select snapshot->>'format' = 'SOAP' and not(snapshot ?| array['audio','transcript','object_path','is_fictional']) from public.approved_notes where session_id = '30000000-0000-4000-8000-000000000002'), 'Approved export snapshot excludes full transcript, storage paths, and demo markers');
+select pg_temp.ok((select count(*) = 1 from public.processing_jobs where session_id = '30000000-0000-4000-8000-000000000002' and kind = 'audio_deletion' and status = 'queued' and available_at = (select deletion_due_at from public.audio_assets where session_id = '30000000-0000-4000-8000-000000000002')), 'Approval creates one due-time audio deletion job');
+select pg_temp.ok((select snapshot->>'format' = 'SOAP' and snapshot->>'is_fictional' = 'true' and snapshot ?& array['patient','clinician','session','approved_at','content','evidence_references'] and not(snapshot ?| array['audio','transcript','object_path']) from public.approved_notes where session_id = '30000000-0000-4000-8000-000000000002'), 'Approved export snapshot includes required metadata without transcript or storage paths');
+select pg_temp.ok((select jsonb_array_length(snapshot->'evidence_references') > 0 from public.approved_notes where session_id = '30000000-0000-4000-8000-000000000002'), 'Approved snapshot preserves useful evidence references without transcript text');
 select pg_temp.ok((select snapshot #>> '{confirmation,confirmed}' = 'true' from public.approved_notes where session_id = '30000000-0000-4000-8000-000000000002'), 'Approved snapshot records explicit clinician confirmation');
 update public.patients set display_name = 'Later name' where id = '20000000-0000-4000-8000-000000000001';
 select pg_temp.ok((select snapshot #>> '{patient,display_name}' = 'Fictional Patient One' from public.approved_notes where session_id = '30000000-0000-4000-8000-000000000002'), 'Approval preserves patient identity at approval time');
@@ -203,9 +205,33 @@ select pg_temp.throws($q$update public.approved_notes set snapshot = '{}' where 
 select pg_temp.throws('delete from public.note_revisions', '23514', 'Draft history cannot be deleted');
 select pg_temp.throws('update public.consent_events set decision = ''revoked''', '23514', 'Consent history is append-only');
 select pg_temp.throws($q$update public.audio_assets set state = 'deleted', deleted_at = now() where session_id = '30000000-0000-4000-8000-000000000002'$q$, '23514', 'Audio cannot be marked deleted before its grace period');
-update public.audio_assets set state = 'deleted', deleted_at = deletion_due_at where session_id = '30000000-0000-4000-8000-000000000002';
+update public.audio_assets set deletion_due_at = now() + interval '1 day'
+  where state = 'pending_deletion' and session_id <> '30000000-0000-4000-8000-000000000002';
+update public.processing_jobs set available_at = now() + interval '1 day'
+  where kind = 'audio_deletion' and session_id <> '30000000-0000-4000-8000-000000000002';
+update public.audio_assets set deletion_due_at = now() where session_id = '30000000-0000-4000-8000-000000000002';
+update public.processing_jobs set available_at = now() where session_id = '30000000-0000-4000-8000-000000000002' and kind = 'audio_deletion';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
+select pg_temp.throws($q$select public.claim_audio_deletion_job()$q$, '42501', 'Clinicians cannot invoke the privileged deletion worker');
+set local role service_role;
+select set_config('request.jwt.claim.sub', '', true);
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select pg_temp.ok((select public.claim_audio_deletion_job()->>'state' = 'claimed'), 'Scheduled worker transactionally claims due audio');
+select public.complete_audio_deletion_job(job.id, job.request_key)
+from public.processing_jobs job
+where job.session_id = '30000000-0000-4000-8000-000000000002' and job.kind = 'audio_deletion';
+select public.complete_audio_deletion_job(job.id, job.request_key)
+from public.processing_jobs job
+where job.session_id = '30000000-0000-4000-8000-000000000002' and job.kind = 'audio_deletion';
+select pg_temp.ok((select status = 'succeeded' and attempts = 1 and finished_at is not null from public.processing_jobs where session_id = '30000000-0000-4000-8000-000000000002' and kind = 'audio_deletion'), 'Audio deletion completion is idempotent and auditable');
+select pg_temp.ok((select state = 'deleted' and deleted_at is not null from public.audio_assets where session_id = '30000000-0000-4000-8000-000000000002'), 'Worker marks metadata deleted only after object removal is acknowledged');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
+select set_config('request.jwt.claims', '{"sub":"10000000-0000-4000-8000-000000000001","role":"authenticated"}', true);
 select pg_temp.ok((select count(*) = 2 from public.transcript_segments where session_id = '30000000-0000-4000-8000-000000000002'), 'Audio deletion retains transcript evidence');
 select pg_temp.ok((select count(*) = 1 from public.approved_notes where session_id = '30000000-0000-4000-8000-000000000002'), 'Audio deletion retains approved note');
+select pg_temp.ok((select documentation_status = 'approved' from public.patient_timeline where session_id = '30000000-0000-4000-8000-000000000002'), 'Audio deletion retains the approved patient timeline');
 
 set local role authenticated;
 select public.record_consent('30000000-0000-4000-8000-000000000003','revoked','demo-v1');

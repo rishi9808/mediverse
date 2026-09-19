@@ -603,6 +603,10 @@ export type Database = {
         Args: { p_job_id: string }
         Returns: Json
       }
+      claim_audio_deletion_job: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       claim_transcription_job: {
         Args: { p_job_id: string }
         Returns: Json
@@ -623,6 +627,10 @@ export type Database = {
       complete_speaker_identification_job: {
         Args: { p_assignments: Json; p_job_id: string; p_model: string }
         Returns: Database["public"]["Tables"]["transcripts"]["Row"]
+      }
+      complete_audio_deletion_job: {
+        Args: { p_audio_asset_id: string; p_job_id: string }
+        Returns: Database["public"]["Tables"]["audio_assets"]["Row"]
       }
       confirm_transcript_speakers: {
         Args: { p_assignments: Json; p_transcript_id: string }
@@ -714,6 +722,10 @@ export type Database = {
         Returns: Database["public"]["Tables"]["processing_jobs"]["Row"]
       }
       fail_speaker_identification_job: {
+        Args: { p_error_code: string; p_job_id: string }
+        Returns: Database["public"]["Tables"]["processing_jobs"]["Row"]
+      }
+      fail_audio_deletion_job: {
         Args: { p_error_code: string; p_job_id: string }
         Returns: Database["public"]["Tables"]["processing_jobs"]["Row"]
       }

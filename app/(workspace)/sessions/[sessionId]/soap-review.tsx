@@ -220,6 +220,18 @@ export function SoapReview({
         </span>
       </div>
 
+      {isApproved && (
+        <div className="approved-note-export">
+          <div>
+            <strong>Approved-note PDF</strong>
+            <p>Includes approval metadata, SOAP content, and evidence timestamps. The full transcript and media location are excluded.</p>
+          </div>
+          <a className="primary-button" href={`/sessions/${sessionId}/approved-note.pdf`}>
+            Download PDF
+          </a>
+        </div>
+      )}
+
       {active && (
         <div className="draft-regeneration-status" role="status">
           A new revision is processing. This version remains editable and will not be overwritten.

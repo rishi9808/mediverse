@@ -599,6 +599,10 @@ a { color: inherit; }
 .transcript-segments li p { margin: 0; font-size: 0.84rem; line-height: 1.6; }
 .confirm-speakers-button { margin-top: 1.4rem; }
 .draft-regeneration-status { margin-top: 1.25rem; padding: 0.8rem 0.9rem; border-radius: 0.65rem; background: var(--mint); color: var(--green-dark); font-size: 0.75rem; font-weight: 650; }
+.approved-note-export { margin-top: 1.25rem; padding: 1rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; border: 1px solid #bfd2cb; border-radius: 0.8rem; background: #f2f7f5; }
+.approved-note-export strong { display: block; font-size: 0.86rem; }
+.approved-note-export p { margin: 0.3rem 0 0; color: var(--muted); font-size: 0.76rem; line-height: 1.5; }
+.approved-note-export .primary-button { flex: 0 0 auto; text-decoration: none; }
 .soap-sections { margin-top: 1.5rem; display: grid; gap: 1rem; }
 .soap-section { padding: 1rem; border: 1px solid var(--line); border-radius: 0.8rem; background: var(--paper); }
 .soap-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
@@ -756,6 +760,8 @@ a { color: inherit; }
   .dialog-actions { flex-direction: column-reverse; }
   .dialog-actions > * { width: 100%; }
   .soap-actions > * { width: 100%; }
+  .approved-note-export { align-items: stretch; flex-direction: column; }
+  .approved-note-export .primary-button { text-align: center; }
   .audio-source-tabs { width: 100%; }
   .audio-source-tabs button { flex: 1; }
   .recording-buttons > * { flex: 1; }
