@@ -121,7 +121,7 @@ Retain Whisper as a comparison candidate. Its hosting option and version have no
 | Doctor used throughout | Use clinician for the common product role; resolve profession and encounter vocabulary in discovery |
 | Generic final report | Confirmed: concise therapy progress note used by the psychologist |
 | Upload prepared audio only | Confirmed: offer both direct recording in Mediverse and existing audio-file upload |
-| One LLM call | Confirmed as the initial complete-transcript drafting baseline; benchmark optional Jev labeling or verification afterward |
+| One LLM call | The initial complete-transcript request now returns automatic speaker assignments and the evidence-linked SOAP draft together; benchmark optional Jev labeling or verification afterward |
 | Prepared 3–5 minute audio | Confirmed: support up to 90 minutes for recording and uploads; keep a short demonstration fixture and test the full duration separately |
 | Short synchronous transcription | Reassess job processing, timeouts, retry behavior, file size, and progress display for actual session duration |
 | DAP recommended | Replaced by the user's confirmed SOAP progress-note format |

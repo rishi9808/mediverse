@@ -2,22 +2,20 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import {
+  generateInitialClinicalDraft,
+  serializeTranscript,
+  soapSchema,
+  type TranscriptSegment,
+  validateSoapOutput,
+} from "@/lib/clinical-pipeline";
 import type { Database, Json } from "@/lib/database.types";
-import { buildSpeakerIdentificationInput } from "@/lib/speaker-identification";
-import type { SoapDocument, SoapStatement } from "@/lib/soap";
+import type { SoapDocument } from "@/lib/soap";
 
 export const CLINICAL_TEXT_MODEL = process.env.OPENAI_CLINICAL_MODEL ?? "gpt-4o-mini-2024-07-18";
 export const SOAP_PROMPT_VERSION = "evidence-soap-v1";
+export const INITIAL_SOAP_PROMPT_VERSION = "speaker-roles-evidence-soap-v2";
 const MAX_ATTEMPTS = 3;
-
-type TranscriptSegment = {
-  id: string;
-  speaker_key: string;
-  speaker_role: string;
-  start_ms: number;
-  end_ms: number;
-  content: string;
-};
 
 type ClaimedSpeakerJob = {
   state: "claimed";
@@ -35,48 +33,6 @@ type ChatCompletionPayload = {
     message?: { content?: string | null; refusal?: string | null };
   }>;
 };
-
-const speakerIdentificationSchema = {
-  type: "object",
-  properties: {
-    assignments: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          speaker_key: { type: "string" },
-          role: { type: "string", enum: ["clinician", "patient"] },
-        },
-        required: ["speaker_key", "role"],
-        additionalProperties: false,
-      },
-    },
-  },
-  required: ["assignments"],
-  additionalProperties: false,
-} as const;
-
-const soapStatementSchema = {
-  type: "object",
-  properties: {
-    text: { type: "string" },
-    segment_ids: { type: "array", items: { type: "string" } },
-  },
-  required: ["text", "segment_ids"],
-  additionalProperties: false,
-} as const;
-
-const soapSchema = {
-  type: "object",
-  properties: {
-    subjective: { type: "array", items: soapStatementSchema },
-    objective: { type: "array", items: soapStatementSchema },
-    assessment: { type: "array", items: soapStatementSchema },
-    plan: { type: "array", items: soapStatementSchema },
-  },
-  required: ["subjective", "objective", "assessment", "plan"],
-  additionalProperties: false,
-} as const;
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && !Array.isArray(value) && typeof value === "object";
@@ -149,81 +105,6 @@ async function requestStructuredOutput<T>(
   }
 }
 
-function serializeTranscript(segments: TranscriptSegment[]) {
-  return segments.map((segment) => JSON.stringify({
-    segment_id: segment.id,
-    speaker_key: segment.speaker_key,
-    speaker_role: segment.speaker_role,
-    start_ms: segment.start_ms,
-    end_ms: segment.end_ms,
-    text: segment.content,
-  })).join("\n");
-}
-
-async function identifySpeakerRoles(segments: TranscriptSegment[]) {
-  const expectedSpeakers = new Set(segments.map((segment) => segment.speaker_key));
-  if (expectedSpeakers.size < 2) throw new Error("SPEAKER_IDENTIFICATION_UNAVAILABLE");
-  const result = await requestStructuredOutput<unknown>(
-    "speaker_role_identification",
-    speakerIdentificationSchema,
-    [
-      "Identify the role of every diarized speaker in this psychotherapy dialogue.",
-      "Assign each exact speaker_key to clinician (the Psychologist) or patient.",
-      "Use the representative excerpts, question style, clinical framing, and first-person reports.",
-      "Do not rename keys, omit speakers, add speakers, or return any transcript text.",
-      "The output must contain at least one clinician and one patient.",
-    ].join(" "),
-    buildSpeakerIdentificationInput(segments),
-  );
-  if (!isObject(result) || !Array.isArray(result.assignments)) {
-    throw new Error("INVALID_PROVIDER_RESPONSE");
-  }
-  const assignments: Record<string, "clinician" | "patient"> = {};
-  for (const item of result.assignments) {
-    if (!isObject(item) || typeof item.speaker_key !== "string" ||
-      !["clinician", "patient"].includes(String(item.role)) ||
-      !expectedSpeakers.has(item.speaker_key) || assignments[item.speaker_key]) {
-      throw new Error("INVALID_PROVIDER_RESPONSE");
-    }
-    assignments[item.speaker_key] = item.role as "clinician" | "patient";
-  }
-  if (Object.keys(assignments).length !== expectedSpeakers.size ||
-    !Object.values(assignments).includes("clinician") ||
-    !Object.values(assignments).includes("patient")) {
-    throw new Error("INVALID_PROVIDER_RESPONSE");
-  }
-  return assignments;
-}
-
-function validateSoapOutput(value: unknown, validSegmentIds: Set<string>): SoapDocument {
-  if (!isObject(value)) throw new Error("INVALID_PROVIDER_RESPONSE");
-  const sections = ["subjective", "objective", "assessment", "plan"] as const;
-  if (Object.keys(value).length !== sections.length || sections.some((section) => !(section in value))) {
-    throw new Error("INVALID_PROVIDER_RESPONSE");
-  }
-  return Object.fromEntries(sections.map((section) => {
-    const rawStatements = value[section];
-    if (!Array.isArray(rawStatements) || rawStatements.length > 100) {
-      throw new Error("INVALID_PROVIDER_RESPONSE");
-    }
-    const statements: SoapStatement[] = rawStatements.map((statement) => {
-      if (!isObject(statement) || Object.keys(statement).length !== 2 ||
-        typeof statement.text !== "string" || !statement.text.trim() ||
-        statement.text.trim().length > 10_000 || !Array.isArray(statement.segment_ids) ||
-        statement.segment_ids.length === 0 || statement.segment_ids.length > 100 ||
-        statement.segment_ids.some((id) => typeof id !== "string" || !validSegmentIds.has(id))) {
-        throw new Error("INVALID_PROVIDER_RESPONSE");
-      }
-      return {
-        text: statement.text.trim(),
-        origin: "transcript",
-        segment_ids: statement.segment_ids as [string, ...string[]],
-      };
-    });
-    return [section, statements];
-  })) as SoapDocument;
-}
-
 async function draftSoap(segments: TranscriptSegment[]) {
   const validSegmentIds = new Set(segments.map((segment) => segment.id));
   const result = await requestStructuredOutput<unknown>(
@@ -266,10 +147,14 @@ export async function processSpeakerIdentificationJob(
     if (claimError || !isClaimedSpeakerJob(claim)) return;
     try {
       const segments = await loadTranscriptSegments(claim.transcript_id, supabase);
-      const assignments = await identifySpeakerRoles(segments);
+      const initialDraft = await generateInitialClinicalDraft(
+        segments,
+        (schemaName, schema, system, input) =>
+          requestStructuredOutput<unknown>(schemaName, schema, system, input),
+      );
       const { error: completeError } = await supabase.rpc("complete_speaker_identification_job", {
         p_job_id: jobId,
-        p_assignments: assignments,
+        p_assignments: initialDraft.assignments,
         p_model: CLINICAL_TEXT_MODEL,
       });
       if (completeError) throw new Error("SPEAKER_IDENTIFICATION_COMMIT_FAILED");
@@ -282,7 +167,12 @@ export async function processSpeakerIdentificationJob(
         .eq("status", "queued")
         .maybeSingle();
       if (draftingJobError) throw new Error("DRAFT_HANDOFF_FAILED");
-      if (draftingJob) await processDraftingJob(draftingJob.id, supabase);
+      if (draftingJob) {
+        await processDraftingJob(draftingJob.id, supabase, {
+          soap: initialDraft.soap,
+          promptVersion: INITIAL_SOAP_PROMPT_VERSION,
+        });
+      }
       return;
     } catch (error) {
       const { data: failedJob } = await supabase.rpc("fail_speaker_identification_job", {
@@ -298,6 +188,7 @@ export async function processSpeakerIdentificationJob(
 export async function processDraftingJob(
   jobId: string,
   supabase: SupabaseClient<Database>,
+  prefetchedDraft?: { soap: SoapDocument; promptVersion: string },
 ) {
   for (let cycle = 0; cycle < MAX_ATTEMPTS; cycle += 1) {
     const { data: claim, error: claimError } = await supabase.rpc("claim_drafting_job", {
@@ -309,12 +200,12 @@ export async function processDraftingJob(
       if (segments.some((segment) => !["clinician", "patient"].includes(segment.speaker_role))) {
         throw new Error("SPEAKER_CONFIRMATION_REQUIRED");
       }
-      const soap = await draftSoap(segments);
+      const soap = prefetchedDraft?.soap ?? await draftSoap(segments);
       const { error: completeError } = await supabase.rpc("complete_drafting_job", {
         p_job_id: jobId,
         p_content: soap,
         p_model: CLINICAL_TEXT_MODEL,
-        p_prompt_version: SOAP_PROMPT_VERSION,
+        p_prompt_version: prefetchedDraft?.promptVersion ?? SOAP_PROMPT_VERSION,
       });
       if (completeError) throw new Error(
         completeError.code === "40001" ? "DRAFT_VERSION_CONFLICT" : "DRAFT_COMMIT_FAILED",
