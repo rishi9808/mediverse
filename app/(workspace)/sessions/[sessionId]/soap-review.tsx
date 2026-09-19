@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 
 import type { SoapDocument, SoapStatement } from "@/lib/soap";
 
+import styles from "./soap-review.module.css";
+
 import {
   approveSoapNote,
   continueDrafting,
@@ -26,6 +28,13 @@ const sectionLabels: Record<SectionName, string> = {
   plan: "Plan",
 };
 
+const sectionDescriptions: Record<SectionName, string> = {
+  subjective: "Patient-reported concerns, symptoms, and relevant history",
+  objective: "Observed presentation and clinically relevant findings",
+  assessment: "Clinical impression based on the documented encounter",
+  plan: "Recommended next steps, interventions, and follow-up",
+};
+
 function formatTimestamp(milliseconds: number) {
   const totalSeconds = Math.floor(milliseconds / 1000);
   return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, "0")}`;
@@ -45,6 +54,16 @@ function formatSavedAt(value: string) {
   }).format(new Date(value));
 }
 
+function formatEncounterDate(value: string) {
+  return new Intl.DateTimeFormat("en", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 export function SoapReview({
   approved,
   draftingJob,
@@ -52,7 +71,10 @@ export function SoapReview({
   revisions,
   segments,
   sessionId,
+  sessionOccurredAt,
   transcriptId,
+  patient,
+  clinician,
 }: {
   approved: { approvedAt: string; noteRevisionId: string } | null;
   draftingJob: Job | null;
@@ -60,7 +82,10 @@ export function SoapReview({
   revisions: RevisionReference[];
   segments: SegmentReference[];
   sessionId: string;
+  sessionOccurredAt: string;
   transcriptId: string;
+  patient: { displayCode: string; displayName: string };
+  clinician: { displayName: string; profession: string | null };
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -202,26 +227,49 @@ export function SoapReview({
   }
 
   return (
-    <section className="soap-card" aria-labelledby="soap-review-heading">
-      <div className="transcription-heading-row">
-        <div>
-          <p className="section-kicker">Evidence-linked SOAP</p>
-          <h2 id="soap-review-heading">
-            {isApproved ? `Approved SOAP note, revision ${note?.version}` : `Review SOAP draft, revision ${note?.version}`}
-          </h2>
-          <p>
-            {isApproved
-              ? `Approved ${approved ? formatSavedAt(approved.approvedAt) : ""}. This note is locked and cannot be edited.`
-              : "AI entries retain transcript evidence. Your own observations are stored separately without fabricated citations."}
-          </p>
+    <section className={`soap-card ${styles.reportShell} ${isApproved ? styles.approvedReport : styles.draftReport}`} aria-labelledby="soap-review-heading">
+      <header className={styles.reportHeader}>
+        <div className={styles.reportTitleRow}>
+          <div className={styles.reportTitleBlock}>
+            <p className={styles.documentType}>{isApproved ? "Approved clinical record" : "Clinical review draft"}</p>
+            <h2 id="soap-review-heading">SOAP progress note</h2>
+            <p>
+              {isApproved
+                ? `Approved ${approved ? formatSavedAt(approved.approvedAt) : ""}. This record is locked against further editing.`
+                : "Review the generated note for clinical accuracy, make corrections, then approve the final record."}
+            </p>
+          </div>
+          <span className={`${styles.reportStatus} ${isApproved ? styles.approvedStatus : styles.reviewStatus}`}>
+            {isApproved ? "Approved" : "Review required"}
+          </span>
         </div>
-        <span className={`status-chip ${isApproved ? "" : "active-status"}`}>
-          {isApproved ? "Approved and immutable" : "Clinician review required"}
-        </span>
-      </div>
+
+        <dl className={styles.reportMetadata}>
+          <div>
+            <dt>Patient</dt>
+            <dd>{patient.displayName}</dd>
+            <span>{patient.displayCode}</span>
+          </div>
+          <div>
+            <dt>Encounter</dt>
+            <dd>{formatEncounterDate(sessionOccurredAt)}</dd>
+            <span>In-person session</span>
+          </div>
+          <div>
+            <dt>Clinician</dt>
+            <dd>{clinician.displayName}</dd>
+            <span>{clinician.profession ?? "Psychologist"}</span>
+          </div>
+          <div>
+            <dt>Document</dt>
+            <dd>SOAP note</dd>
+            <span>Revision {note?.version}</span>
+          </div>
+        </dl>
+      </header>
 
       {isApproved && (
-        <div className="approved-note-export">
+        <div className={`${styles.exportPanel} approved-note-export`}>
           <div>
             <strong>Approved-note PDF</strong>
             <p>Includes approval metadata and SOAP content. Transcript evidence, references, and media location are excluded.</p>
@@ -238,53 +286,63 @@ export function SoapReview({
         </div>
       )}
 
-      <div className="soap-sections">
+      <div className={styles.reportBody}>
         {sectionNames.map((section) => (
-          <section className="soap-section" key={section}>
-            <div className="soap-section-heading">
-              <h3>{sectionLabels[section]}</h3>
+          <section className={styles.reportSection} key={section}>
+            <div className={styles.sectionHeading}>
+              <div className={styles.sectionIdentity}>
+                <span aria-hidden="true">{sectionLabels[section].charAt(0)}</span>
+                <div>
+                  <h3>{sectionLabels[section]}</h3>
+                  <p>{sectionDescriptions[section]}</p>
+                </div>
+              </div>
               {!isApproved && (
-                <button className="secondary-button" type="button" onClick={() => addClinicianEntry(section)}>
+                <button className={`${styles.addEntryButton} secondary-button`} type="button" onClick={() => addClinicianEntry(section)}>
                   Add clinician entry
                 </button>
               )}
             </div>
             {document[section].length === 0 && (
-              <p className="unsupported-section">No supported transcript content. Add a clinician observation if appropriate.</p>
+              <p className={styles.emptySection}>No supported transcript content. Add a clinician observation if appropriate.</p>
             )}
             {document[section].map((statement, index) => (
-              <div className="soap-statement" key={`${section}-${index}`}>
-                <div className="soap-statement-meta">
-                  <span className={`origin-chip ${statement.origin}`}>
-                    {statement.origin === "transcript" ? "Transcript-derived" : "Clinician-entered"}
-                  </span>
-                  {!isApproved && <button type="button" onClick={() => removeStatement(section, index)}>Remove</button>}
+              <article className={styles.reportEntry} key={`${section}-${index}`}>
+                <div className={styles.entryNumber} aria-hidden="true">{String(index + 1).padStart(2, "0")}</div>
+                <div className={styles.entryContent}>
+                  <div className={styles.entryMeta}>
+                    <span>{statement.origin === "transcript" ? "Transcript-derived" : "Clinician-entered"}</span>
+                    {!isApproved && <button type="button" onClick={() => removeStatement(section, index)}>Remove</button>}
+                  </div>
+                  {isApproved ? (
+                    <p className={styles.approvedEntryText}>{statement.text}</p>
+                  ) : (
+                    <textarea
+                      aria-label={`${sectionLabels[section]} entry ${index + 1}`}
+                      onChange={(event) => updateStatement(section, index, event.target.value)}
+                      rows={3}
+                      value={statement.text}
+                    />
+                  )}
+                  {statement.origin === "transcript" ? (
+                    <p className={styles.evidenceNote}>
+                      Transcript evidence: {statement.segment_ids.map((id, evidenceIndex) => {
+                        const segment = evidence.get(id);
+                        return segment
+                          ? <span key={id}>
+                              {evidenceIndex > 0 ? ", " : ""}
+                              <a href={`#transcript-segment-${id}`}>
+                                {formatTimestamp(segment.startMs)}-{formatTimestamp(segment.endMs)}
+                              </a>
+                            </span>
+                          : <span key={id}>{evidenceIndex > 0 ? ", " : ""}Unavailable segment</span>;
+                      })}
+                    </p>
+                  ) : (
+                    <p className={styles.evidenceNote}>Clinician observation. No transcript citation required.</p>
+                  )}
                 </div>
-                <textarea
-                  aria-label={`${sectionLabels[section]} entry ${index + 1}`}
-                  onChange={(event) => updateStatement(section, index, event.target.value)}
-                  readOnly={isApproved}
-                  rows={3}
-                  value={statement.text}
-                />
-                {statement.origin === "transcript" ? (
-                  <p className="evidence-links">
-                    Evidence: {statement.segment_ids.map((id, evidenceIndex) => {
-                      const segment = evidence.get(id);
-                      return segment
-                        ? <span key={id}>
-                            {evidenceIndex > 0 ? ", " : ""}
-                            <a href={`#transcript-segment-${id}`}>
-                              {formatTimestamp(segment.startMs)}-{formatTimestamp(segment.endMs)}
-                            </a>
-                          </span>
-                        : <span key={id}>{evidenceIndex > 0 ? ", " : ""}Unavailable segment</span>;
-                    })}
-                  </p>
-                ) : (
-                  <p className="evidence-links">Clinician observation, no transcript citation required</p>
-                )}
-              </div>
+              </article>
             ))}
           </section>
         ))}
@@ -292,24 +350,30 @@ export function SoapReview({
 
       {!isApproved && (
         <>
-          <div className="soap-actions">
-            <button className="primary-button" disabled={pending || !dirty} type="button" onClick={save}>
-              {pending ? "Saving…" : "Save new revision"}
-            </button>
-            <button className="secondary-button" disabled={pending || Boolean(active)} type="button" onClick={regenerate}>
-              Regenerate as new revision
-            </button>
-            <button
-              className="approve-button"
-              disabled={pending || dirty || !isComplete || Boolean(active)}
-              type="button"
-              onClick={() => {
-                setConfirmed(false);
-                setShowConfirmation(true);
-              }}
-            >
-              Approve latest revision
-            </button>
+          <div className={styles.reviewFooter}>
+            <div>
+              <strong>Clinical sign-off</strong>
+              <p>Save all corrections before approving this note as the final record.</p>
+            </div>
+            <div className="soap-actions">
+              <button className="primary-button" disabled={pending || !dirty} type="button" onClick={save}>
+                {pending ? "Saving…" : "Save new revision"}
+              </button>
+              <button className="secondary-button" disabled={pending || Boolean(active)} type="button" onClick={regenerate}>
+                Regenerate as new revision
+              </button>
+              <button
+                className="approve-button"
+                disabled={pending || dirty || !isComplete || Boolean(active)}
+                type="button"
+                onClick={() => {
+                  setConfirmed(false);
+                  setShowConfirmation(true);
+                }}
+              >
+                Approve latest revision
+              </button>
+            </div>
           </div>
           {!isComplete && (
             <p className="approval-help">Approval requires content in Subjective, Objective, Assessment, and Plan.</p>

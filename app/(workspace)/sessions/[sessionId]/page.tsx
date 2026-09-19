@@ -327,7 +327,10 @@ export default async function SessionPage({ params }: { params: Promise<{ sessio
               endMs: segment.end_ms,
             }))}
             sessionId={session.id}
+            sessionOccurredAt={session.occurred_at}
             transcriptId={transcript.id}
+            patient={{ displayCode: patient.display_code, displayName: patient.display_name }}
+            clinician={{ displayName: clinician.display_name, profession: clinician.profession }}
           />
           <TranscriptDisclosure>{transcriptPanel}</TranscriptDisclosure>
         </div>
