@@ -10,30 +10,44 @@
 
 ## Overview
 
-Mediverse is a documentation workspace for psychologists that turns consented session audio into evidence-linked SOAP progress notes. Clinicians can manage patient records, record or upload a consultation, review the transcript and draft, approve the final note, and export it as a PDF.
+A consultation ends, but the clinician's work continues: documenting what was discussed, updating the patient record, and keeping track of what comes next. Mediverse starts with that moment.
 
-The hackathon prototype uses fictional patients and sessions and focuses on English, in-person consultations.
+Mediverse turns consented session audio into a draft progress note that a psychologist can check against the conversation, edit, and approve. The aim is to give clinicians more room to focus on the person in front of them while making the work around each consultation easier to manage.
+
+I built Mediverse as a solo hackathon project and the first step toward a potential product. The next step is to speak with doctors and psychologists, understand how their practices actually operate, and improve Mediverse around the problems they find most valuable to solve. The longer-term ambition is an **AI-backed clinical operating system** connecting patient onboarding, appointment booking through AI calls, consultation documentation, and follow-up in one workspace.
+
+Today's prototype demonstrates the documentation workflow using fictional patients and English, in-person sessions. The broader clinical OS is the product direction I intend to develop with clinician input.
 
 ## Problem Statement
 
-Writing progress notes after a consultation adds administrative work. Turning a long conversation into a concise record also makes it difficult to check where a summary came from. Psychologists need a drafting workflow that keeps the source evidence accessible and leaves the final documentation under their control.
+The conversation is only one part of a patient's care journey. Around it sit intake details, appointments, progress notes, and follow-ups. My starting product hypothesis is that reducing the effort of keeping these pieces connected can make everyday clinical work easier.
+
+I chose documentation as the first problem to explore. A useful note needs to preserve the meaning of a conversation in a form the clinician can return to later. An AI summary only helps if the clinician can quickly check its sources, correct it, and trust the review process.
+
+Mediverse asks a practical question: **can a clinician finish a useful, accurate note with less effort by reviewing an evidence-linked draft?** The prototype makes that question testable. Conversations and workflow reviews with doctors and psychologists will help establish where it delivers value and what should come next.
 
 ## Solution
 
-Mediverse connects the documentation workflow in one place: patient record → consent → audio → speaker-labelled transcript → SOAP draft → clinician review → approval → PDF.
+Imagine a psychologist finishing a session and opening a draft with the key points already organized. Each generated statement links back to the relevant transcript segment. The psychologist can inspect the context, correct the wording, add observations, and decide when the note is ready.
 
-SOAP organizes a note into **Subjective, Objective, Assessment, and Plan**. AI-generated statements link to transcript segments so the psychologist can inspect their sources. Clinicians can edit the draft and add observations that were not spoken aloud. Explicit approval creates an immutable note snapshot that remains available in the patient's history.
+That is the first Mediverse workflow:
+
+**Patient record → consent → audio → transcript → SOAP draft → clinician review → approval → patient history and PDF.**
+
+SOAP organizes the note into **Subjective, Objective, Assessment, and Plan**. Observations entered by the clinician are distinguished from transcript-derived content. Approval preserves a fixed snapshot of the final note, giving the clinician a record they can reopen before the next visit.
+
+The product principle is simple: AI prepares the draft; the clinician owns the final record. As Mediverse grows, that same emphasis on visibility and control will guide how I approach other parts of the practice.
 
 ## Features
 
-- **Clinician workspace:** authenticated access, a work queue, patient onboarding, patient history, and follow-up tracking.
-- **Consent and audio capture:** record an in-person session or upload audio, with limits of 90 minutes and 50 MiB.
-- **Speaker-labelled transcription:** Deepgram transcription with diarization, automatic psychologist/patient identification, and a speaker-review workflow.
-- **Evidence-linked SOAP drafts:** structured AI output with transcript references and separately identified clinician observations.
-- **Review and approval:** editable drafts, revision tracking, and immutable approved notes.
-- **PDF export:** download an approved note without including the full transcript by default.
-- **Audio retention:** a scheduled deletion worker removes due audio while retaining transcripts and note evidence; deployment configuration is required.
-- **Prototype feedback:** structured psychologist feedback and repeatable fictional workspace fixtures.
+- **Start with the patient:** onboard patients and keep their session history and follow-ups together in a clinician workspace.
+- **Capture a consented conversation:** record an in-person session or upload existing audio, with limits of 90 minutes and 50 MiB.
+- **See who said what:** review a speaker-labelled transcript with automatic psychologist/patient identification.
+- **Review a draft with its evidence:** inspect SOAP statements alongside their transcript references and add clinician observations separately.
+- **Keep control of the final note:** edit the draft, track revisions, and explicitly approve an immutable final version.
+- **Take the record forward:** reopen notes in the patient history or download an approved PDF without the full transcript by default.
+- **Manage the audio lifecycle:** a configurable scheduled worker deletes due audio while preserving the transcript and note evidence.
+- **Help shape the product:** capture structured psychologist feedback and use repeatable fictional cases to explore the workflow.
 
 ## Tech Stack
 
@@ -126,12 +140,36 @@ For a manual demo check, sign in, open a fictional patient, capture consent, upl
 
 ## Additional Notes
 
-- **Prototype scope:** fictional data only. Clinical accuracy, time savings, and suitability for a real-patient pilot have not been established.
-- **Current limits:** English, in-person sessions and two-speaker review. Appointment scheduling, guardian consent, multilingual support, more than two speakers, amendments after approval, and EMR integration are not yet covered.
-- **Long sessions:** the application enforces a 90-minute limit and includes boundary fixtures. Seeded fixtures do not prove live transcription reliability or note quality for a full-length recording.
-- **Human review:** evidence links support review but do not guarantee that generated claims accurately reflect their sources.
-- **Retention:** audio deletion uses a 24-hour prototype grace period after approval and requires a configured worker. This is a prototype setting, not a validated real-patient retention policy.
-- **Next steps:** gather psychologist feedback, evaluate factual support and correction effort, test full-length sessions, and assess real-patient pilot requirements before expanding to other specialties.
+### From a hackathon build to a product
+
+Mediverse is intended to continue beyond this hackathon. The immediate priority is to speak with doctors and psychologists, walk through their current workflows, and put the prototype in front of them using fictional cases. I want to learn where documentation takes the most effort, what makes a draft useful, and what would make them comfortable adopting a tool like this.
+
+Those conversations will guide the next iterations. I plan to evaluate the time needed to review and approve a note, the amount of correction required, missed or unsupported information, and whether clinicians would want to use the workflow again. These are questions to investigate; time savings and clinical usefulness have not yet been established.
+
+### The next phase: an AI-backed clinical OS
+
+The longer-term vision is to support the journey from a patient's first contact with a practice through ongoing care:
+
+- **Patient onboarding:** bring intake, patient details, and consent into a connected workflow.
+- **Appointment booking through AI calls:** help patients reserve, confirm, or reschedule appointments, with a path to human assistance.
+- **Consultation documentation:** build on the current transcript-to-note workflow and adapt it to the needs of different clinicians.
+- **Continuity between visits:** connect patient history, follow-ups, and practice workflows so clinicians can see what needs attention next.
+
+The next phase will work toward this broader clinical OS in stages. Clinician feedback will determine the sequence and scope; AI calling and appointment booking are planned capabilities, not features of the current build.
+
+### Security and trust as product requirements
+
+Patient data security is central to the product I want to build. The prototype already includes clinician-scoped database access, private audio storage, server-only AI credentials, and an audio-deletion workflow. Moving toward real-patient use will require a wider assessment of data handling, access controls, consent, retention, service providers, and operational practices.
+
+My ambition includes working toward **HIPAA compliance where applicable**, alongside the privacy and healthcare requirements of the markets I serve. Mediverse does **not currently claim HIPAA compliance**. Security and compliance readiness will be part of planning and validating a real-patient pilot as the product develops.
+
+### Current prototype boundaries
+
+- The demo uses fictional data. Clinical accuracy and readiness for real-patient use have not been established.
+- The current workflow focuses on English, in-person sessions with two-speaker review. Guardian consent, multilingual support, amendments after approval, and EMR integration remain outside the current build.
+- The 90-minute limit and boundary fixtures do not establish live transcription reliability or note quality for full-length recordings.
+- Transcript references help clinicians review generated statements; they do not guarantee that a statement accurately reflects its source.
+- Audio deletion uses a 24-hour prototype grace period after approval and requires a configured worker. Real-patient retention requirements remain to be evaluated.
 
 Further implementation details:
 
