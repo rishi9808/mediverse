@@ -56,7 +56,7 @@ Manual fallback credentials: `clinician@mediverse.test` / `med@123`.
 
 ### Demo / Pitch Video
 
-**To add:** demo or pitch video link.
+[Watch the Mediverse demo video on Loom](https://www.loom.com/share/870435c091de423b95413af311934336).
 
 Suggested walkthrough: introduce the documentation problem, open a fictional patient, show consent and audio entry, inspect a transcript-linked SOAP draft, approve it, and download the PDF.
 
