@@ -64,7 +64,17 @@ Manual fallback credentials: `clinician@mediverse.test` / `med@123`.
 
 ## Screenshots
 
-**To add before submission:** screenshots of the clinician dashboard, patient timeline, SOAP review with transcript evidence, and approved PDF. Use fictional data only.
+### Clinician dashboard
+
+![Mediverse clinician dashboard showing the work queue and recent patients](docs/assets/mediverse-dashboard.png)
+
+### Patient records
+
+![Mediverse patient list showing session history and follow-up status](docs/assets/mediverse-patients.png)
+
+### SOAP note review
+
+![Mediverse SOAP progress note review with workflow status and clinician controls](docs/assets/mediverse-soap-review.png)
 
 ## How to Run Locally
 
