@@ -6,6 +6,18 @@ import { createClient } from "@/lib/supabase/server";
 
 export type LoginState = { message: string };
 
+const REVIEWER_EMAIL = "clinician@mediverse.test";
+const REVIEWER_PASSWORD = "med@123";
+
+async function signIn(email: string, password: string, errorMessage: string): Promise<LoginState> {
+  const supabase = await createClient();
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+  if (error) return { message: errorMessage };
+
+  redirect("/");
+}
+
 export async function login(
   _previousState: LoginState,
   formData: FormData,
@@ -22,17 +34,16 @@ export async function login(
     return { message: "Enter your email and password." };
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword({
-    email: normalizedEmail,
-    password,
-  });
+  return signIn(normalizedEmail, password, "The email or password is incorrect.");
+}
 
-  if (error) {
-    return { message: "The email or password is incorrect." };
-  }
-
-  redirect("/");
+export async function loginAsReviewer(_previousState: LoginState): Promise<LoginState> {
+  void _previousState;
+  return signIn(
+    REVIEWER_EMAIL,
+    REVIEWER_PASSWORD,
+    "Reviewer access is temporarily unavailable. Use the demo credentials below.",
+  );
 }
 
 export async function logout() {

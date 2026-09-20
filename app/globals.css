@@ -124,7 +124,27 @@ a { color: inherit; }
 }
 .login-card-heading > p:last-child { margin: 0.85rem 0 0; color: var(--muted); line-height: 1.6; }
 
-.login-form { display: flex; flex-direction: column; gap: 1.25rem; }
+.login-options, .login-form, .reviewer-login-form { display: flex; flex-direction: column; }
+.login-options { gap: 1.5rem; }
+.login-form { gap: 1.25rem; }
+.reviewer-login-form { gap: 0.85rem; }
+.reviewer-login-form > p { margin: 0; color: var(--muted); font-size: 0.9rem; line-height: 1.5; }
+.reviewer-login-button {
+  min-height: 3.35rem;
+  padding: 0.75rem 1.15rem;
+  border: 1px solid var(--green);
+  border-radius: 0.7rem;
+  background: #eef6f5;
+  color: var(--green-dark);
+  cursor: pointer;
+  font-weight: 750;
+  transition: background 150ms ease, transform 150ms ease;
+}
+.reviewer-login-button:hover:not(:disabled) { background: #deeeeb; transform: translateY(-1px); }
+.reviewer-login-button:disabled { cursor: wait; opacity: 0.72; }
+.reviewer-message { min-height: 0; margin: 0; }
+.login-divider { display: flex; align-items: center; gap: 0.8rem; color: #87938f; font-size: 0.75rem; }
+.login-divider::before, .login-divider::after { content: ""; height: 1px; flex: 1; background: var(--line); }
 .field-group { display: flex; flex-direction: column; gap: 0.55rem; }
 .field-group label { font-size: 0.84rem; font-weight: 650; }
 .field-group input {

@@ -33,7 +33,7 @@ SOAP organizes a note into **Subjective, Objective, Assessment, and Plan**. AI-g
 - **Backend:** Next.js Server Actions and Route Handlers, with PostgreSQL functions for workflow rules.
 - **Database:** Supabase PostgreSQL with row-level security and versioned SQL migrations.
 - **APIs / Services:** Supabase Auth and private Storage; Deepgram Nova-3; OpenAI for structured SOAP drafting and speaker identification, plus an alternative transcription path.
-- **Hosting / Deployment:** Vercel configuration, including a daily audio-retention cron compatible with the Hobby plan; Supabase for hosted backend services. A live deployment URL is still to be added.
+- **Hosting / Deployment:** Vercel configuration, including a daily audio-retention cron compatible with the Hobby plan; Supabase for hosted backend services. The live demo is deployed at [mediverse-mvp.vercel.app](https://mediverse-mvp.vercel.app/).
 - **Other Tools:** pnpm, Supabase CLI, PGlite, Node.js test runner, ESLint, pdf-lib, and tus-js-client for resumable uploads.
 
 ## Codex / OpenAI Usage
@@ -50,7 +50,9 @@ AI helps turn conversation content into an organized first draft. The psychologi
 
 ### Live Demo
 
-**To add:** deployed project URL and judge access instructions.
+[Open the Mediverse demo](https://mediverse-mvp.vercel.app/). Hackathon reviewers can select **Skip login — enter reviewer demo** for one-click access to the fictional clinician workspace.
+
+Manual fallback credentials: `clinician@mediverse.test` / `med@123`.
 
 ### Demo / Pitch Video
 
