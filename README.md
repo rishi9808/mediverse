@@ -1,5 +1,7 @@
 # Mediverse
 
+**Repository:** [github.com/rishi9808/mediverse](https://github.com/rishi9808/mediverse)
+
 ## Demo Video
 
 [![Watch the Mediverse demo video](docs/assets/mediverse-demo.gif)](https://www.loom.com/share/870435c091de423b95413af311934336)
@@ -69,14 +71,14 @@ Manual fallback credentials: `clinician@mediverse.test` / `med@123`.
 Prerequisites: Node.js compatible with the pinned Next.js and pnpm versions, pnpm 11.0.6, Docker for local Supabase, and API keys for live AI processing.
 
 ```bash
-git clone <repo-url>
-cd <project-folder>
+git clone https://github.com/rishi9808/mediverse.git
+cd mediverse
 pnpm install --frozen-lockfile
 pnpm db:start
 pnpm db:reset
 ```
 
-The clone URL is still to be supplied. In the current workspace, the Git repository is the inner `mediverse/` directory; run these commands there. `pnpm db:reset` rebuilds the **local** database and loads fictional fixtures.
+`pnpm db:reset` rebuilds the **local** database and loads fictional fixtures.
 
 Create `.env.local` in the repository root with your own values:
 
