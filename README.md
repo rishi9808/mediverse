@@ -1,5 +1,11 @@
 # Mediverse
 
+## Demo Video
+
+[![Watch the Mediverse demo video](docs/assets/mediverse-demo.gif)](https://www.loom.com/share/870435c091de423b95413af311934336)
+
+**[Play the full demo on Loom](https://www.loom.com/share/870435c091de423b95413af311934336)**
+
 ## Overview
 
 Mediverse is a documentation workspace for psychologists that turns consented session audio into evidence-linked SOAP progress notes. Clinicians can manage patient records, record or upload a consultation, review the transcript and draft, approve the final note, and export it as a PDF.
@@ -53,12 +59,6 @@ AI helps turn conversation content into an organized first draft. The psychologi
 [Open the Mediverse demo](https://mediverse-mvp.vercel.app/). Hackathon reviewers can select **Skip login — enter reviewer demo** for one-click access to the fictional clinician workspace.
 
 Manual fallback credentials: `clinician@mediverse.test` / `med@123`.
-
-### Demo / Pitch Video
-
-[Watch the Mediverse demo video on Loom](https://www.loom.com/share/870435c091de423b95413af311934336).
-
-Suggested walkthrough: introduce the documentation problem, open a fictional patient, show consent and audio entry, inspect a transcript-linked SOAP draft, approve it, and download the PDF.
 
 ## Screenshots
 
