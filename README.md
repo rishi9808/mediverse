@@ -33,7 +33,7 @@ SOAP organizes a note into **Subjective, Objective, Assessment, and Plan**. AI-g
 - **Backend:** Next.js Server Actions and Route Handlers, with PostgreSQL functions for workflow rules.
 - **Database:** Supabase PostgreSQL with row-level security and versioned SQL migrations.
 - **APIs / Services:** Supabase Auth and private Storage; Deepgram Nova-3; OpenAI for structured SOAP drafting and speaker identification, plus an alternative transcription path.
-- **Hosting / Deployment:** Vercel configuration, including an hourly audio-retention cron; Supabase for hosted backend services. A live deployment URL is still to be added.
+- **Hosting / Deployment:** Vercel configuration, including a daily audio-retention cron compatible with the Hobby plan; Supabase for hosted backend services. A live deployment URL is still to be added.
 - **Other Tools:** pnpm, Supabase CLI, PGlite, Node.js test runner, ESLint, pdf-lib, and tus-js-client for resumable uploads.
 
 ## Codex / OpenAI Usage
@@ -95,7 +95,7 @@ pnpm dev
 
 Open [http://localhost:3000](http://localhost:3000) and sign in with the test account.
 
-For production audio retention, also configure server-only `SUPABASE_SECRET_KEY` and `CRON_SECRET`. The Vercel schedule in `vercel.json` calls `/api/cron/audio-retention` hourly with bearer authentication. Running the development server alone does not schedule deletion jobs.
+For production audio retention, also configure server-only `SUPABASE_SECRET_KEY` and `CRON_SECRET`. The Vercel schedule in `vercel.json` calls `/api/cron/audio-retention` daily at midnight UTC (`0 0 * * *`) with bearer authentication. On the Hobby plan, invocation can occur anywhere within the scheduled hour. Due audio is deleted on the next successful run after its retention deadline, so daily scheduling adds roughly a day of possible cleanup delay. Running the development server alone does not schedule deletion jobs.
 
 ### Checks and maintenance
 
